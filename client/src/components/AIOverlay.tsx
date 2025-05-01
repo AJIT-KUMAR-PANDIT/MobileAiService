@@ -3,8 +3,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { VoiceUI } from "./VoiceUI";
 import { ChatUI } from "./ChatUI";
 import { ModelDownloadStatus } from "./ModelDownloadStatus";
+import { ModelSelector } from "./ModelSelector";
 import { useLLMService } from "@/services/LLMService";
-import { Message } from "@/types/llm";
+import { Message, ModelOptions } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
 import useWakeWordDetection from "@/services/WakeWordService";
@@ -68,7 +69,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     modelName,
     inference, 
     loadModel,
-    isInferring
+    isInferring,
+    changeModel,
+    modelOptions
   } = useLLMService();
   
   const { 
@@ -430,6 +433,13 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 totalSize={totalSize}
               />
             )}
+            
+            {/* Model Selector */}
+            <ModelSelector
+              currentModel={modelOptions.modelId}
+              isLoading={isDownloading || isInferring}
+              onModelChange={changeModel}
+            />
           </motion.div>
         </motion.div>
       )}

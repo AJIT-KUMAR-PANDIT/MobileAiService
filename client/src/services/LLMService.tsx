@@ -24,9 +24,17 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "mlc-ai/Llama-2-7b-chat-hf-q4f16_1",
+  modelId: "mlc-ai/phi-1_5-q4f16_1",
   temperature: 0.7,
-  maxTokens: 2048,
+  maxTokens: 512,
+  repetitionPenalty: 1.1,
+};
+
+// Fallback model config (even smaller)
+const fallbackModelOptions: ModelOptions = {
+  modelId: "mlc-ai/RedPajama-INCITE-Base-3B-v1-q4f16_1",
+  temperature: 0.7,
+  maxTokens: 256,
   repetitionPenalty: 1.1,
 };
 
@@ -245,6 +253,19 @@ export const useLLMService = (options = defaultModelOptions) => {
       const errorMessage = err instanceof Error ? err.message : "Failed to load model";
       setError(errorMessage);
       setIsDownloading(false);
+      
+      // If the current model isn't the fallback model, try the fallback
+      const currentModelId = modelOptions.modelId;
+      const fallbackModelId = fallbackModelOptions.modelId;
+      
+      if (currentModelId !== fallbackModelId) {
+        console.log("Trying fallback model:", fallbackModelId);
+        setModelOptions(fallbackModelOptions);
+        
+        // The loadModel will be called again with the new options via the useEffect
+        return null;
+      }
+      
       return null;
     }
   }, [modelOptions]);
@@ -356,5 +377,6 @@ export const useLLMService = (options = defaultModelOptions) => {
     loadModel,
     changeModel,
     inference,
+    modelOptions,
   };
 };
