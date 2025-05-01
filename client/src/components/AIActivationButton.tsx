@@ -27,6 +27,10 @@ export const AIActivationButton: FC<AIActivationButtonProps> = ({ onClick }) => 
       setTimeout(() => button.classList.remove('scale-90'), 150);
     }
     
+    // Load and show console message for debugging
+    console.log("Activating AI assistant...");
+    
+    // Call the provided onClick handler
     onClick();
   };
   

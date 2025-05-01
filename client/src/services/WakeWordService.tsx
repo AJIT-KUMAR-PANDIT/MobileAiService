@@ -211,12 +211,51 @@ const useWakeWordDetection = () => {
       }
     };
     
-    // Start recognition
+    // Start recognition with error handling
     try {
       recognition.start();
+      console.log("Wake word detection started successfully");
     } catch (e) {
       console.error('Error starting wake word detection:', e);
-      setIsListening(false);
+      
+      // In case of error, try to recreate the recognition object
+      try {
+        if (recognitionRef.current) {
+          recognitionRef.current = null;
+        }
+        
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognitionAPI) {
+          const newRecognition = new SpeechRecognitionAPI();
+          recognitionRef.current = newRecognition;
+          
+          // Configure recognition
+          newRecognition.continuous = false;
+          newRecognition.interimResults = true;
+          newRecognition.lang = 'en-US';
+          
+          // Set up event handlers (simplified)
+          newRecognition.onresult = recognition.onresult;
+          newRecognition.onend = recognition.onend;
+          newRecognition.onerror = recognition.onerror;
+          
+          // Try starting again after a short delay
+          setTimeout(() => {
+            try {
+              newRecognition.start();
+              console.log("Wake word detection restarted after error");
+            } catch (retryError) {
+              console.error("Failed final attempt to start wake word detection:", retryError);
+              setIsListening(false);
+            }
+          }, 1000);
+        } else {
+          setIsListening(false);
+        }
+      } catch (recoveryError) {
+        console.error("Error during recovery attempt:", recoveryError);
+        setIsListening(false);
+      }
     }
   }, [stopListening, resetDetection]);
   

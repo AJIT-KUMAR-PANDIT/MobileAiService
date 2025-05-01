@@ -72,11 +72,71 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
 
   const startListening = useCallback(() => {
     setTranscript('');
-    if (recognitionRef.current && !listening) {
+    if (recognitionRef.current) {
       try {
-        recognitionRef.current.start();
+        // First try to stop any existing recognition
+        try {
+          if (listening) {
+            recognitionRef.current.stop();
+          }
+        } catch (e) {
+          // Ignore errors from stopping recognition
+        }
+        
+        // Short timeout before starting a new recognition session
+        setTimeout(() => {
+          try {
+            recognitionRef.current.start();
+            console.log("Speech recognition started successfully");
+          } catch (startError) {
+            console.error('Error starting speech recognition:', startError);
+            
+            // If failed, recreate the recognition object and try again
+            try {
+              const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+              if (SpeechRecognition) {
+                recognitionRef.current = new SpeechRecognition();
+                recognitionRef.current.continuous = false;
+                recognitionRef.current.interimResults = true;
+                recognitionRef.current.lang = 'en-US';
+                
+                recognitionRef.current.onstart = () => {
+                  setListening(true);
+                };
+                
+                recognitionRef.current.onend = () => {
+                  setListening(false);
+                };
+                
+                recognitionRef.current.onresult = (event: any) => {
+                  const current = event.resultIndex;
+                  let newTranscript = '';
+                  
+                  for (let i = current; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) {
+                      newTranscript += event.results[i][0].transcript;
+                    }
+                  }
+                  
+                  setTranscript(newTranscript);
+                };
+                
+                recognitionRef.current.onerror = (event: any) => {
+                  console.error('Speech recognition error:', event.error);
+                  setListening(false);
+                };
+                
+                // Try to start the new recognition
+                recognitionRef.current.start();
+                console.log("Speech recognition restarted after error");
+              }
+            } catch (recoveryError) {
+              console.error("Failed to restart speech recognition:", recoveryError);
+            }
+          }
+        }, 300);
       } catch (error) {
-        console.error('Error starting speech recognition:', error);
+        console.error('Error in speech recognition setup:', error);
       }
     }
   }, [listening]);
