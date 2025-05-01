@@ -1,5 +1,6 @@
-import { FC } from "react";
+import { FC, useEffect, useState } from "react";
 import { ModelOptions } from "@/types/llm";
+import { prebuiltAppConfig } from "@mlc-ai/web-llm";
 
 // Define available models that are confirmed to be supported by WebLLM
 const AVAILABLE_MODELS = [

@@ -10,6 +10,7 @@ import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
 import useWakeWordDetection from "@/services/WakeWordService";
 import prompts from "@/data/prompts.json";
+import { prebuiltAppConfig } from "@mlc-ai/web-llm";
 
 // Import sound generator utility
 import { generateWakeupSound } from '@/utils/generateWakeupSound';
@@ -123,6 +124,18 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   useEffect(() => {
     if (isVisible && !isModelLoaded && !isDownloading) {
       console.log("Auto-loading AI model...");
+      
+      // Log available WebLLM models
+      if (prebuiltAppConfig && prebuiltAppConfig.model_list) {
+        console.log("Available WebLLM models:", prebuiltAppConfig.model_list);
+        console.log("Model IDs:");
+        prebuiltAppConfig.model_list.forEach(model => {
+          console.log(`- ${model.model_id} (URL: ${model.model})`);
+        });
+      } else {
+        console.log("WebLLM model list not available");
+      }
+      
       loadModel()
         .then(() => console.log("Model loaded successfully"))
         .catch(err => console.error("Failed to load model:", err));

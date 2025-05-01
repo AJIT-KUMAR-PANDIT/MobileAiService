@@ -6,7 +6,8 @@ import {
   InitProgressCallback,
   InitProgressReport,
   ChatCompletionChunk,
-  ChatCompletionRole
+  ChatCompletionRole,
+  prebuiltAppConfig
 } from "@mlc-ai/web-llm";
 import { Message, ModelData, ModelOptions, LLMResponse } from "../types/llm";
 
@@ -184,8 +185,10 @@ export const useLLMService = (options = defaultModelOptions) => {
       // Reset states
       setIsModelLoaded(false);
       setError(null);
+      console.log("Starting model load process...");
       
       const { modelId } = modelOptions;
+      console.log("Using model ID:", modelId);
       
       // Format readable model name from the technical ID
       let readableName = modelId;
@@ -201,6 +204,7 @@ export const useLLMService = (options = defaultModelOptions) => {
         readableName = "Llama 2";
       }
       
+      console.log("Model readable name:", readableName);
       setModelName(readableName);
       
       // Check if model exists in IndexedDB
