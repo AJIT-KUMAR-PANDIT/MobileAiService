@@ -24,7 +24,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Xenova/phi-2",
+  modelId: "mlc-chat-Phi-2-q4f16_1",
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -32,7 +32,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (even smaller)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "Xenova/tiny_llama-1.1b-chat-v1.0",
+  modelId: "mlc-chat-RedPajama-INCITE-Chat-3B-v1-q4f16_1",
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
@@ -186,10 +186,13 @@ export const useLLMService = (options = defaultModelOptions) => {
       setError(null);
       
       const { modelId } = modelOptions;
-      const modelNameFromId = modelId.split('/').pop();
-      if (modelNameFromId) {
-        setModelName(modelNameFromId);
-      }
+      // Extract readable name from model ID
+      const modelNameParts = modelId.split('-');
+      const readableName = modelNameParts.length > 1 ? 
+        modelNameParts[1] : // Get the name part (like "Phi-2")
+        modelId.split('/').pop() || modelId; // Fallback
+      
+      setModelName(readableName);
       
       // Check if model exists in IndexedDB
       const modelExists = await checkModelExists(modelId);
