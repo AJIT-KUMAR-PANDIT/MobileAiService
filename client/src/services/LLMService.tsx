@@ -6,9 +6,21 @@ import {
   InitProgressCallback,
   InitProgressReport,
   ChatCompletionChunk,
-  ChatCompletionMessage
+  ChatCompletionRole
 } from "@mlc-ai/web-llm";
 import { Message, ModelData, ModelOptions, LLMResponse } from "../types/llm";
+
+// WebLLM types
+interface ChatMessage {
+  role: ChatCompletionRole;
+  content: string;
+}
+
+// Download progress type
+interface DownloadProgress {
+  current: number;
+  total: number;
+}
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
@@ -180,10 +192,14 @@ export const useLLMService = (options = defaultModelOptions) => {
         const cachedModel = await loadModelFromIndexedDB(modelId);
         if (cachedModel) {
           // Initialize WebLLM with cached model
-          const engine = await CreateMLCEngine({
-            modelId: modelId,
-            useCache: true,
-          }) as unknown as ModelEngine;
+          const engine = await CreateMLCEngine(
+            modelId,
+            { 
+              initProgressCallback: (report: InitProgressReport) => {
+                console.log("Loading model progress:", report.progress);
+              }
+            }
+          ) as unknown as ModelEngine;
           setModel(engine);
           setIsModelLoaded(true);
           return engine;
@@ -194,17 +210,21 @@ export const useLLMService = (options = defaultModelOptions) => {
       setIsDownloading(true);
       setDownloadProgress(0);
       
-      const engine = await CreateMLCEngine({
-        modelId: modelId,
-        progressCallback: (progress: DownloadProgress) => {
-          if (progress.current && progress.total) {
-            const percentage = (progress.current / progress.total) * 100;
-            setDownloadProgress(percentage);
-            setDownloadSize(formatByteSize(progress.current));
-            setTotalSize(formatByteSize(progress.total));
+      const engine = await CreateMLCEngine(
+        modelId,
+        {
+          initProgressCallback: (report: InitProgressReport) => {
+            setDownloadProgress(report.progress * 100);
+            // Extract bytes from the text that may contain download information 
+            // like "Downloaded 10/100MB"
+            const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
+            if (matches && matches.length >= 3) {
+              setDownloadSize(matches[1] + matches[3]);
+              setTotalSize(matches[2] + matches[3]);
+            }
           }
         }
-      }) as unknown as ModelEngine;
+      ) as unknown as ModelEngine;
       
       setModel(engine);
       setIsModelLoaded(true);
@@ -265,7 +285,13 @@ export const useLLMService = (options = defaultModelOptions) => {
       });
       
       setIsInferring(false);
-      return response.content;
+      // Extract content from the ChatCompletionChunk
+      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
+        return response.choices[0].message.content || "";
+      } else {
+        console.warn("Unexpected response format:", response);
+        return "I'm sorry, I couldn't generate a response at this time.";
+      }
     } catch (err: unknown) {
       console.error("Inference error:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to generate response";
