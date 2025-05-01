@@ -24,7 +24,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Xenova/gemma-2b",
+  modelId: "mlc-ai/Llama-2-7b-chat-hf-q4f16_1",
   temperature: 0.7,
   maxTokens: 2048,
   repetitionPenalty: 1.1,
@@ -289,7 +289,7 @@ export const useLLMService = (options = defaultModelOptions) => {
       try {
         // For streaming response (ChatCompletionChunk)
         if (response.choices && response.choices.length > 0) {
-          const choice = response.choices[0];
+          const choice = response.choices[0] as any;
           
           // Check delta content (WebLLM streaming format)
           if (choice.delta && typeof choice.delta.content !== 'undefined') {
@@ -297,7 +297,7 @@ export const useLLMService = (options = defaultModelOptions) => {
           }
           
           // Direct content in the choice (some implementations)
-          if (typeof choice.content === 'string') {
+          if (choice.content !== undefined && typeof choice.content === 'string') {
             return choice.content;
           }
           
@@ -307,14 +307,15 @@ export const useLLMService = (options = defaultModelOptions) => {
           }
           
           // Try text property (older model formats)
-          if (typeof choice.text === 'string') {
+          if (choice.text !== undefined && typeof choice.text === 'string') {
             return choice.text;
           }
         }
         
         // Custom model response format: might be directly on the response object
-        if (typeof response.content === 'string') {
-          return response.content;
+        const anyResponse = response as any;
+        if (typeof anyResponse.content === 'string') {
+          return anyResponse.content;
         }
         
         // Last resort: stringify the response and log a warning

@@ -1,0 +1,99 @@
+chunk-WERSD76P.js?v=0a2180a8:21551 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+The deferred DOM Node could not be resolved to a valid node.
+useSpeechSynthesis.tsx:41 Available voices: []length: 0[[Prototype]]: Array(0)
+useSpeechSynthesis.tsx:41 Available voices: (22) ['Microsoft David - English (United States) (en-US)', 'Microsoft Mark - English (United States) (en-US)', 'Microsoft Zira - English (United States) (en-US)', 'Google Deutsch (de-DE)', 'Google US English (en-US)', 'Google UK English Female (en-GB)', 'Google UK English Male (en-GB)', 'Google español (es-ES)', 'Google español de Estados Unidos (es-US)', 'Google français (fr-FR)', 'Google हिन्दी (hi-IN)', 'Google Bahasa Indonesia (id-ID)', 'Google italiano (it-IT)', 'Google 日本語 (ja-JP)', 'Google 한국의 (ko-KR)', 'Google Nederlands (nl-NL)', 'Google polski (pl-PL)', 'Google português do Brasil (pt-BR)', 'Google русский (ru-RU)', 'Google 普通话（中国大陆） (zh-CN)', 'Google 粤語（香港） (zh-HK)', 'Google 國語（臺灣） (zh-TW)']
+AIOverlay.tsx:45 Wake sound generated successfully
+home.tsx:10 Activating AI assistant...
+AIOverlay.tsx:97 Auto-loading AI model...
+AIOverlay.tsx:107 Starting wake word detection for 'Luna'...
+WakeWordService.tsx:92 Stopping wake word detection
+WakeWordService.tsx:131 Wake word detection started
+LLMService.tsx:244 Error loading model: ModelNotFoundError: Cannot find model record in appConfig for Xenova/gemma-2b. Please check if the model ID is correct and included in the model_list configuration.
+    at findModelRecord$1 (@mlc-ai_web-llm.js?v=0a2180a8:13664:9)
+    at MLCEngine.<anonymous> (@mlc-ai_web-llm.js?v=0a2180a8:19639:27)
+    at Generator.next (<anonymous>)
+    at @mlc-ai_web-llm.js?v=0a2180a8:2154:67
+    at new Promise (<anonymous>)
+    at __awaiter (@mlc-ai_web-llm.js?v=0a2180a8:2136:10)
+    at MLCEngine.reloadInternal (@mlc-ai_web-llm.js?v=0a2180a8:19636:12)
+    at MLCEngine.<anonymous> (@mlc-ai_web-llm.js?v=0a2180a8:19621:22)
+    at Generator.next (<anonymous>)
+    at fulfilled (@mlc-ai_web-llm.js?v=0a2180a8:2139:24)
+(anonymous) @ LLMService.tsx:244
+await in (anonymous)
+(anonymous) @ AIOverlay.tsx:98
+commitHookEffectListMount @ chunk-WERSD76P.js?v=0a2180a8:16915
+commitPassiveMountOnFiber @ chunk-WERSD76P.js?v=0a2180a8:18156
+commitPassiveMountEffects_complete @ chunk-WERSD76P.js?v=0a2180a8:18129
+commitPassiveMountEffects_begin @ chunk-WERSD76P.js?v=0a2180a8:18119
+commitPassiveMountEffects @ chunk-WERSD76P.js?v=0a2180a8:18109
+flushPassiveEffectsImpl @ chunk-WERSD76P.js?v=0a2180a8:19490
+flushPassiveEffects @ chunk-WERSD76P.js?v=0a2180a8:19447
+commitRootImpl @ chunk-WERSD76P.js?v=0a2180a8:19416
+commitRoot @ chunk-WERSD76P.js?v=0a2180a8:19277
+performSyncWorkOnRoot @ chunk-WERSD76P.js?v=0a2180a8:18895
+flushSyncCallbacks @ chunk-WERSD76P.js?v=0a2180a8:9119
+(anonymous) @ chunk-WERSD76P.js?v=0a2180a8:18627
+AIOverlay.tsx:99 Model loaded successfully
+WakeWordService.tsx:92 Stopping wake word detection
+WakeWordService.tsx:92 Stopping wake word detection
+LLMService.tsx:328 Inference error: Error: Model not loaded
+    at LLMService.tsx:261:15
+    at handleChatSend (AIOverlay.tsx:236:30)
+    at handleSend (ChatUI.tsx:37:7)
+    at handleKeyPress (ChatUI.tsx:44:7)
+    at HTMLUnknownElement.callCallback2 (chunk-WERSD76P.js?v=0a2180a8:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-WERSD76P.js?v=0a2180a8:3699:24)
+    at invokeGuardedCallback (chunk-WERSD76P.js?v=0a2180a8:3733:39)
+    at invokeGuardedCallbackAndCatchFirstError (chunk-WERSD76P.js?v=0a2180a8:3736:33)
+    at executeDispatch (chunk-WERSD76P.js?v=0a2180a8:7014:11)
+    at processDispatchQueueItemsInOrder (chunk-WERSD76P.js?v=0a2180a8:7034:15)
+(anonymous) @ LLMService.tsx:328
+handleChatSend @ AIOverlay.tsx:236
+handleSend @ ChatUI.tsx:37
+handleKeyPress @ ChatUI.tsx:44
+callCallback2 @ chunk-WERSD76P.js?v=0a2180a8:3674
+invokeGuardedCallbackDev @ chunk-WERSD76P.js?v=0a2180a8:3699
+invokeGuardedCallback @ chunk-WERSD76P.js?v=0a2180a8:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-WERSD76P.js?v=0a2180a8:3736
+executeDispatch @ chunk-WERSD76P.js?v=0a2180a8:7014
+processDispatchQueueItemsInOrder @ chunk-WERSD76P.js?v=0a2180a8:7034
+processDispatchQueue @ chunk-WERSD76P.js?v=0a2180a8:7043
+dispatchEventsForPlugins @ chunk-WERSD76P.js?v=0a2180a8:7051
+(anonymous) @ chunk-WERSD76P.js?v=0a2180a8:7174
+batchedUpdates$1 @ chunk-WERSD76P.js?v=0a2180a8:18913
+batchedUpdates @ chunk-WERSD76P.js?v=0a2180a8:3579
+dispatchEventForPluginEventSystem @ chunk-WERSD76P.js?v=0a2180a8:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-WERSD76P.js?v=0a2180a8:5478
+dispatchEvent @ chunk-WERSD76P.js?v=0a2180a8:5472
+dispatchDiscreteEvent @ chunk-WERSD76P.js?v=0a2180a8:5449
+AIOverlay.tsx:243 Error sending chat message: Error: Model not loaded
+    at LLMService.tsx:261:15
+    at handleChatSend (AIOverlay.tsx:236:30)
+    at handleSend (ChatUI.tsx:37:7)
+    at handleKeyPress (ChatUI.tsx:44:7)
+    at HTMLUnknownElement.callCallback2 (chunk-WERSD76P.js?v=0a2180a8:3674:22)
+    at Object.invokeGuardedCallbackDev (chunk-WERSD76P.js?v=0a2180a8:3699:24)
+    at invokeGuardedCallback (chunk-WERSD76P.js?v=0a2180a8:3733:39)
+    at invokeGuardedCallbackAndCatchFirstError (chunk-WERSD76P.js?v=0a2180a8:3736:33)
+    at executeDispatch (chunk-WERSD76P.js?v=0a2180a8:7014:11)
+    at processDispatchQueueItemsInOrder (chunk-WERSD76P.js?v=0a2180a8:7034:15)
+handleChatSend @ AIOverlay.tsx:243
+await in handleChatSend
+handleSend @ ChatUI.tsx:37
+handleKeyPress @ ChatUI.tsx:44
+callCallback2 @ chunk-WERSD76P.js?v=0a2180a8:3674
+invokeGuardedCallbackDev @ chunk-WERSD76P.js?v=0a2180a8:3699
+invokeGuardedCallback @ chunk-WERSD76P.js?v=0a2180a8:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-WERSD76P.js?v=0a2180a8:3736
+executeDispatch @ chunk-WERSD76P.js?v=0a2180a8:7014
+processDispatchQueueItemsInOrder @ chunk-WERSD76P.js?v=0a2180a8:7034
+processDispatchQueue @ chunk-WERSD76P.js?v=0a2180a8:7043
+dispatchEventsForPlugins @ chunk-WERSD76P.js?v=0a2180a8:7051
+(anonymous) @ chunk-WERSD76P.js?v=0a2180a8:7174
+batchedUpdates$1 @ chunk-WERSD76P.js?v=0a2180a8:18913
+batchedUpdates @ chunk-WERSD76P.js?v=0a2180a8:3579
+dispatchEventForPluginEventSystem @ chunk-WERSD76P.js?v=0a2180a8:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-WERSD76P.js?v=0a2180a8:5478
+dispatchEvent @ chunk-WERSD76P.js?v=0a2180a8:5472
+dispatchDiscreteEvent @ chunk-WERSD76P.js?v=0a2180a8:5449
