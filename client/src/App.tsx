@@ -6,8 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import { useEffect, useState } from "react";
-import { AIActivationButton } from "@/components/AIActivationButton";
-import { AIOverlay } from "@/components/AIOverlay";
 
 function Router() {
   return (
@@ -19,7 +17,6 @@ function Router() {
 }
 
 function App() {
-  const [overlayVisible, setOverlayVisible] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   
   // Check system preference for dark mode
@@ -44,18 +41,9 @@ function App() {
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, []);
 
-  const toggleOverlay = () => {
-    setOverlayVisible(!overlayVisible);
-  };
-
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AIOverlay 
-          isVisible={overlayVisible} 
-          onClose={() => setOverlayVisible(false)} 
-        />
-        <AIActivationButton onClick={toggleOverlay} />
         <div className={isDarkMode ? "dark" : ""}>
           <Toaster />
           <Router />

@@ -285,21 +285,45 @@ export const useLLMService = (options = defaultModelOptions) => {
       });
       
       setIsInferring(false);
-      // Extract content from the ChatCompletionChunk
-      if (response.choices && response.choices.length > 0) {
-        const choice = response.choices[0];
+      // The response might come in different formats based on the model implementation
+      try {
         // For streaming response (ChatCompletionChunk)
-        if (choice.delta && choice.delta.content !== undefined) {
-          return choice.delta.content || "";
+        if (response.choices && response.choices.length > 0) {
+          const choice = response.choices[0];
+          
+          // Check delta content (WebLLM streaming format)
+          if (choice.delta && typeof choice.delta.content !== 'undefined') {
+            return choice.delta.content || "";
+          }
+          
+          // Direct content in the choice (some implementations)
+          if (typeof choice.content === 'string') {
+            return choice.content;
+          }
+          
+          // Try to access nested message property (OpenAI-compatible format)
+          if (choice.message && typeof choice.message.content === 'string') {
+            return choice.message.content;
+          }
+          
+          // Try text property (older model formats)
+          if (typeof choice.text === 'string') {
+            return choice.text;
+          }
         }
-        // For non-streaming response (ChatCompletion)
-        else if (choice.message && choice.message.content !== undefined) {
-          return choice.message.content || "";
+        
+        // Custom model response format: might be directly on the response object
+        if (typeof response.content === 'string') {
+          return response.content;
         }
+        
+        // Last resort: stringify the response and log a warning
+        console.warn("Unexpected response format:", response);
+        return "I'm sorry, I couldn't generate a response at this time.";
+      } catch (error) {
+        console.error("Error parsing model response:", error);
+        return "I encountered an error processing the response. Please try again.";
       }
-      
-      console.warn("Unexpected response format:", response);
-      return "I'm sorry, I couldn't generate a response at this time.";
     } catch (err: unknown) {
       console.error("Inference error:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to generate response";
