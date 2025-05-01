@@ -7,7 +7,11 @@ import { useLLMService } from "@/services/LLMService";
 import { Message } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
+import useWakeWordDetection from "@/services/WakeWordService";
 import prompts from "@/data/prompts.json";
+
+// Import wakeup sound
+import wakeupSound from '../assets/sounds/wakeupsound.mp3';
 
 interface AIOverlayProps {
   isVisible: boolean;
@@ -24,7 +28,8 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const [aiResponse, setAIResponse] = useState("How can I help you today?");
-  const [instruction, setInstruction] = useState("Tap the microphone and speak");
+  const [instruction, setInstruction] = useState("Say 'Luna' or tap the microphone");
+  const [isWakeWordMode, setIsWakeWordMode] = useState(true);
 
   const { 
     isModelLoaded, 
@@ -42,10 +47,21 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     transcript, 
     listening, 
     startListening, 
-    stopListening 
+    stopListening,
+    resetTranscript 
   } = useSpeechRecognition();
   
   const { speak, speaking } = useSpeechSynthesis();
+  
+  // Wake word detection
+  const {
+    isListening: isWakeWordListening,
+    isWakeWordDetected,
+    startListening: startWakeWordListening,
+    stopListening: stopWakeWordListening,
+    resetDetection,
+    wakeWordConfidence
+  } = useWakeWordDetection();
 
   // Auto-load model when overlay becomes visible
   useEffect(() => {
@@ -57,23 +73,66 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     }
   }, [isVisible, isModelLoaded, isDownloading, loadModel]);
   
-  // Automatically start voice input when voice mode is active and the model is loaded
+  // Start wake word detection when overlay is visible
   useEffect(() => {
-    if (isVisible && isModelLoaded && mode === "voice" && !listening && !speaking && !isInferring) {
-      // Add a small delay to allow the UI to render and avoid immediate activation
+    if (isVisible && isWakeWordMode && mode === "voice" && !isWakeWordListening && !listening && !speaking) {
+      console.log("Starting wake word detection for 'Luna'...");
+      startWakeWordListening();
+      setInstruction("Say 'Luna' or tap the microphone");
+    }
+    
+    return () => {
+      if (isWakeWordListening) {
+        stopWakeWordListening();
+      }
+    };
+  }, [isVisible, isWakeWordMode, mode, isWakeWordListening, listening, speaking, startWakeWordListening, stopWakeWordListening]);
+  
+  // Handle wake word detection
+  useEffect(() => {
+    if (isWakeWordDetected && isModelLoaded && !listening) {
+      console.log("Wake word 'Luna' detected!");
+      
+      // Play wake sound
+      const audio = new Audio(wakeupSound);
+      audio.play().catch(e => console.error("Failed to play wake sound:", e));
+      
+      // Stop wake word detection temporarily
+      stopWakeWordListening();
+      
+      // Reset detection to prepare for next wake word
+      resetDetection();
+      
+      // Start listening for command after a short delay
+      setTimeout(() => {
+        setInstruction("Luna is listening...");
+        startListening();
+      }, 500);
+    }
+  }, [isWakeWordDetected, isModelLoaded, listening, startListening, stopWakeWordListening, resetDetection]);
+  
+  // Process transcript when available
+  useEffect(() => {
+    if (transcript && !isInferring) {
+      handleVoiceInput(transcript);
+      resetTranscript();
+    }
+  }, [transcript, isInferring, resetTranscript]);
+  
+  // Restart wake word detection after response
+  useEffect(() => {
+    if (isVisible && isModelLoaded && mode === "voice" && !listening && !speaking && !isInferring && 
+        isWakeWordMode && !isWakeWordListening) {
+      // Add a delay to avoid immediate restart
       const timer = setTimeout(() => {
-        setInstruction("Tap the microphone to start speaking");
-      }, 1000);
+        setInstruction("Say 'Luna' or tap the microphone");
+        startWakeWordListening();
+      }, 1500);
       
       return () => clearTimeout(timer);
     }
-  }, [isVisible, isModelLoaded, mode, listening, speaking, isInferring]);
-
-  useEffect(() => {
-    if (transcript) {
-      handleVoiceInput(transcript);
-    }
-  }, [transcript]);
+  }, [isVisible, isModelLoaded, mode, listening, speaking, isInferring, isWakeWordMode, 
+      isWakeWordListening, startWakeWordListening]);
 
   const toggleMode = () => {
     setMode(mode === "voice" ? "chat" : "voice");
