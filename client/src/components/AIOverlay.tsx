@@ -82,7 +82,32 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetTranscript 
   } = useSpeechRecognition();
   
-  const { speak, speaking } = useSpeechSynthesis();
+  const { speak, speaking, supported, voices, setVoice } = useSpeechSynthesis();
+  
+  // Select a female voice if available
+  useEffect(() => {
+    console.log("Available voices:", voices);
+    
+    if (voices.length > 0) {
+      // Try to find a female voice - prefer Google UK English Female, Microsoft Zira, or any voice with "female" in the name
+      const femaleVoice = voices.find(
+        voice => 
+          voice.name.includes("Google UK English Female") || 
+          voice.name.includes("Microsoft Zira") || 
+          voice.name.toLowerCase().includes("female")
+      );
+      
+      // If a female voice is found, use it
+      if (femaleVoice) {
+        console.log("Using female voice:", femaleVoice.name);
+        setVoice(femaleVoice);
+      } else {
+        // Otherwise, use the first available voice
+        console.log("No female voice found, using default:", voices[0].name);
+        setVoice(voices[0]);
+      }
+    }
+  }, [voices, setVoice]);
   
   // Wake word detection
   const {

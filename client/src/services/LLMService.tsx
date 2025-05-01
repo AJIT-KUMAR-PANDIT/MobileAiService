@@ -24,7 +24,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "mlc-ai/phi-1_5-q4f16_1",
+  modelId: "Xenova/phi-2",
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -32,7 +32,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (even smaller)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "mlc-ai/RedPajama-INCITE-Base-3B-v1-q4f16_1",
+  modelId: "Xenova/tiny_llama-1.1b-chat-v1.0",
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,

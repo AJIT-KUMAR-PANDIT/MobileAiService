@@ -1,25 +1,25 @@
 import { FC } from "react";
 import { ModelOptions } from "@/types/llm";
 
-// Define available models
+// Define available models that are confirmed to be supported by WebLLM
 const AVAILABLE_MODELS = [
   {
-    id: "mlc-ai/phi-1_5-q4f16_1",
-    name: "Phi-1.5 (Small - 1.3B)",
-    description: "A small model optimized for mobile & web (under 300MB)"
+    id: "Xenova/phi-2",
+    name: "Phi-2 (Small - 2.7B)",
+    description: "Microsoft's 2.7B parameter model, optimized for efficiency"
   },
   {
-    id: "mlc-ai/TinyLlama-1.1B-Chat-v1.0-q4f16_1",
+    id: "Xenova/tiny_llama-1.1b-chat-v1.0",
     name: "TinyLlama (Small - 1.1B)",
     description: "A lightweight chat model for mobile & web"
   },
   {
-    id: "mlc-ai/RedPajama-INCITE-Base-3B-v1-q4f16_1",
-    name: "RedPajama (Medium - 3B)",
-    description: "A mid-sized model with good performance"
+    id: "Xenova/stablelm-zephyr-3b",
+    name: "StableLM (Medium - 3B)",
+    description: "Stability AI's 3B model fine-tuned with Zephyr method"
   },
   {
-    id: "mlc-ai/Llama-2-7b-chat-hf-q4f16_1",
+    id: "Xenova/llama-2-7b-chat",
     name: "Llama 2 (Large - 7B)",
     description: "A high-quality chat model with strong reasoning"
   }
