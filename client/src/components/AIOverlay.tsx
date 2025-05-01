@@ -47,11 +47,27 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   
   const { speak, speaking } = useSpeechSynthesis();
 
+  // Auto-load model when overlay becomes visible
   useEffect(() => {
     if (isVisible && !isModelLoaded && !isDownloading) {
-      loadModel();
+      console.log("Auto-loading AI model...");
+      loadModel()
+        .then(() => console.log("Model loaded successfully"))
+        .catch(err => console.error("Failed to load model:", err));
     }
   }, [isVisible, isModelLoaded, isDownloading, loadModel]);
+  
+  // Automatically start voice input when voice mode is active and the model is loaded
+  useEffect(() => {
+    if (isVisible && isModelLoaded && mode === "voice" && !listening && !speaking && !isInferring) {
+      // Add a small delay to allow the UI to render and avoid immediate activation
+      const timer = setTimeout(() => {
+        setInstruction("Tap the microphone to start speaking");
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, isModelLoaded, mode, listening, speaking, isInferring]);
 
   useEffect(() => {
     if (transcript) {

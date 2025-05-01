@@ -286,12 +286,20 @@ export const useLLMService = (options = defaultModelOptions) => {
       
       setIsInferring(false);
       // Extract content from the ChatCompletionChunk
-      if (response.choices && response.choices.length > 0 && response.choices[0].message) {
-        return response.choices[0].message.content || "";
-      } else {
-        console.warn("Unexpected response format:", response);
-        return "I'm sorry, I couldn't generate a response at this time.";
+      if (response.choices && response.choices.length > 0) {
+        const choice = response.choices[0];
+        // For streaming response (ChatCompletionChunk)
+        if (choice.delta && choice.delta.content !== undefined) {
+          return choice.delta.content || "";
+        }
+        // For non-streaming response (ChatCompletion)
+        else if (choice.message && choice.message.content !== undefined) {
+          return choice.message.content || "";
+        }
       }
+      
+      console.warn("Unexpected response format:", response);
+      return "I'm sorry, I couldn't generate a response at this time.";
     } catch (err: unknown) {
       console.error("Inference error:", err);
       const errorMessage = err instanceof Error ? err.message : "Failed to generate response";

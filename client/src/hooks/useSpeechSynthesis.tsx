@@ -26,8 +26,20 @@ const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
         const availableVoices = synth.getVoices();
         setVoices(availableVoices);
         
-        // Default to first English voice, or fall back to first voice
-        const englishVoice = availableVoices.find(voice => voice.lang.includes('en-'));
+        // Find a female English voice, or any English voice, or fall back to first voice
+        const femaleEnglishVoice = availableVoices.find(
+          voice => voice.lang.includes('en-') && voice.name.toLowerCase().includes('female')
+        );
+        const anyFemaleVoice = femaleEnglishVoice || availableVoices.find(
+          voice => voice.name.toLowerCase().includes('female')
+        );
+        const englishVoice = anyFemaleVoice || availableVoices.find(
+          voice => voice.lang.includes('en-')
+        );
+        
+        // Log available voices to help with debugging
+        console.log('Available voices:', availableVoices.map(v => `${v.name} (${v.lang})`));
+        
         setCurrentVoice(englishVoice || (availableVoices.length > 0 ? availableVoices[0] : null));
       };
       
