@@ -24,7 +24,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "mlc-chat-Phi-2-q4f16_1",
+  modelId: "Qwen1.5-0.5B-Chat",
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -32,7 +32,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (even smaller)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "mlc-chat-RedPajama-INCITE-Chat-3B-v1-q4f16_1",
+  modelId: "TinyLlama-1.1B-Chat",
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
@@ -186,11 +186,20 @@ export const useLLMService = (options = defaultModelOptions) => {
       setError(null);
       
       const { modelId } = modelOptions;
-      // Extract readable name from model ID
-      const modelNameParts = modelId.split('-');
-      const readableName = modelNameParts.length > 1 ? 
-        modelNameParts[1] : // Get the name part (like "Phi-2")
-        modelId.split('/').pop() || modelId; // Fallback
+      
+      // Format readable model name from the technical ID
+      let readableName = modelId;
+      
+      // Handle different model ID patterns
+      if (modelId.includes("Qwen")) {
+        readableName = "Qwen 1.5";
+      } else if (modelId.includes("TinyLlama")) {
+        readableName = "TinyLlama";
+      } else if (modelId.includes("Phi")) {
+        readableName = "Phi-2";
+      } else if (modelId.includes("Llama")) {
+        readableName = "Llama 2";
+      }
       
       setModelName(readableName);
       

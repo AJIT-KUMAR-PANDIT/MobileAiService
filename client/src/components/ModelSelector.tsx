@@ -4,24 +4,24 @@ import { ModelOptions } from "@/types/llm";
 // Define available models that are confirmed to be supported by WebLLM
 const AVAILABLE_MODELS = [
   {
-    id: "mlc-chat-Phi-2-q4f16_1",
+    id: "Qwen1.5-0.5B-Chat",
+    name: "Qwen 1.5 (Mini - 0.5B)",
+    description: "Ultra small and efficient model for mobile & web (under 300MB)"
+  },
+  {
+    id: "TinyLlama-1.1B-Chat",
+    name: "TinyLlama (Mini - 1.1B)",
+    description: "A tiny but capable model, ideal for mobile & web use"
+  },
+  {
+    id: "Phi-2",
     name: "Phi-2 (Small - 2.7B)",
     description: "Microsoft's 2.7B parameter model, optimized for efficiency"
   },
   {
-    id: "mlc-chat-Llama-2-7b-chat-hf-q4f16_1",
+    id: "Llama-2-7b-chat",
     name: "Llama 2 (Medium - 7B)",
     description: "Meta's Llama 2 model fine-tuned for chat and instruction following"
-  },
-  {
-    id: "mlc-chat-RedPajama-INCITE-Chat-3B-v1-q4f16_1",
-    name: "RedPajama (Small - 3B)",
-    description: "A 3B parameter model trained on internet-scale text data"
-  },
-  {
-    id: "mlc-chat-TinyLlama-1.1B-Chat-v1.0-q4f16_1",
-    name: "TinyLlama (Mini - 1.1B)",
-    description: "A tiny but capable model, ideal for mobile & web use"
   }
 ];
 
