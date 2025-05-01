@@ -308,11 +308,12 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           />
           
           <motion.div
-            className="relative w-full max-w-xl min-h-[400px] sm:min-h-[500px] glass-effect rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="relative w-full max-w-xl min-h-[400px] sm:min-h-[500px] max-h-[90vh] glass-effect rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             style={{
               background: "rgba(17, 24, 39, 0.7)",
               backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)"
+              WebkitBackdropFilter: "blur(8px)",
+              overflowY: "auto"
             }}
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
