@@ -1,178 +1,239 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
-// Import wake sound
-import wakeupSound from '../assets/sounds/wakeupsound.mp3';
-
-interface UseWakeWordDetectionReturn {
-  isListening: boolean;
-  isWakeWordDetected: boolean;
-  startListening: () => void;
-  stopListening: () => void;
-  resetDetection: () => void;
-  wakeWordConfidence: number;
+// Define types for browser speech recognition API
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
 }
 
-// The wake word we're listening for
-const WAKE_WORD = 'luna';
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  item(index: number): SpeechRecognitionResult;
+  [index: number]: SpeechRecognitionResult;
+}
 
-// Create an audio context and buffer for wake sound
-let audioContext: AudioContext | null = null;
-let wakeBuffer: AudioBuffer | null = null;
+interface SpeechRecognitionResult {
+  readonly length: number;
+  item(index: number): SpeechRecognitionAlternative;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal?: boolean;
+}
 
-// Function to play wake sound
-const playWakeSound = async () => {
-  try {
-    if (!audioContext) {
-      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      
-      // Load wake sound if not already loaded
-      if (!wakeBuffer) {
-        const response = await fetch(wakeupSound);
-        const arrayBuffer = await response.arrayBuffer();
-        wakeBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      }
-    }
-    
-    // Create source and play sound
-    const source = audioContext.createBufferSource();
-    source.buffer = wakeBuffer;
-    source.connect(audioContext.destination);
-    source.start(0);
-    
-    return true;
-  } catch (error) {
-    console.error('Error playing wake sound:', error);
-    return false;
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: ((event: Event) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onnomatch: ((event: Event) => void) | null;
+  onstart: ((event: Event) => void) | null;
+  onaudiostart: ((event: Event) => void) | null;
+  onaudioend: ((event: Event) => void) | null;
+  onsoundstart: ((event: Event) => void) | null;
+  onsoundend: ((event: Event) => void) | null;
+  onspeechstart: ((event: Event) => void) | null;
+  onspeechend: ((event: Event) => void) | null;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): SpeechRecognition;
+}
+
+// Augment the window object to include speech recognition
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
   }
-};
+}
 
-const useWakeWordDetection = (): UseWakeWordDetectionReturn => {
+// Configuration for wake word detection
+const WAKE_WORD = 'luna';
+const CONFIDENCE_THRESHOLD = 0.6;
+const RECOGNITION_INTERVAL = 3000; // Recognition interval in ms
+const WAKE_WORD_TIMEOUT = 5000; // Reset detection after this many ms
+
+/**
+ * Custom hook for wake word detection
+ * Listens for the wake word "Luna" and triggers a callback when detected
+ */
+const useWakeWordDetection = () => {
   const [isListening, setIsListening] = useState(false);
   const [isWakeWordDetected, setIsWakeWordDetected] = useState(false);
   const [wakeWordConfidence, setWakeWordConfidence] = useState(0);
-  const [recognition, setRecognition] = useState<any>(null);
-
-  // Initialize speech recognition
+  
+  // References for cleanup and state access in callbacks
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isListeningRef = useRef(isListening);
+  
+  // Update ref when state changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        const recognitionInstance = new SpeechRecognition();
-        recognitionInstance.continuous = true;
-        recognitionInstance.interimResults = true;
-        recognitionInstance.lang = 'en-US';
-        
-        // Configure for best wake word detection
-        recognitionInstance.maxAlternatives = 5;
-        
-        setRecognition(recognitionInstance);
-      }
-    }
-    
-    return () => {
-      if (recognition) {
-        recognition.stop();
-      }
-    };
-  }, []);
-
-  // Set up event handlers for speech recognition
-  useEffect(() => {
-    if (!recognition) return;
-    
-    recognition.onstart = () => {
-      setIsListening(true);
-      console.log('Wake word detection started');
-    };
-    
-    recognition.onend = () => {
-      if (isListening) {
-        // Auto restart if we're supposed to be listening
-        recognition.start();
-      } else {
-        setIsListening(false);
-        console.log('Wake word detection stopped');
-      }
-    };
-    
-    recognition.onerror = (event: any) => {
-      console.error('Wake word detection error:', event.error);
-      if (event.error === 'no-speech') {
-        // This is common and not a critical error
-        return;
-      }
-      
-      setIsListening(false);
-    };
-    
-    recognition.onresult = (event: any) => {
-      const results = Array.from(event.results);
-      
-      for (let i = event.resultIndex; i < results.length; i++) {
-        const result = results[i];
-        const transcript = result[0].transcript.trim().toLowerCase();
-        
-        // Check if transcript contains wake word
-        if (transcript.includes(WAKE_WORD)) {
-          // Calculate rough confidence based on position in results
-          const position = transcript.indexOf(WAKE_WORD);
-          const confidence = position === 0 ? 
-            0.9 + (result[0].confidence * 0.1) : 
-            0.5 + (result[0].confidence * 0.1) - (position * 0.01);
-          
-          console.log(`Wake word "${WAKE_WORD}" detected with confidence:`, confidence);
-          setWakeWordConfidence(confidence);
-          
-          if (confidence > 0.6) {
-            setIsWakeWordDetected(true);
-            playWakeSound();
-            
-            // Temporarily stop recognition to prevent multiple detections
-            recognition.stop();
-            setTimeout(() => {
-              if (isListening) {
-                recognition.start();
-              }
-            }, 1500);
-          }
-          
-          break;
-        }
-      }
-    };
-  }, [recognition, isListening]);
-
-  const startListening = useCallback(() => {
-    if (recognition) {
-      try {
-        recognition.start();
-        setIsListening(true);
-      } catch (error) {
-        console.error('Error starting wake word detection:', error);
-      }
-    }
-  }, [recognition]);
-
-  const stopListening = useCallback(() => {
-    if (recognition) {
-      recognition.stop();
-      setIsListening(false);
-    }
-  }, [recognition]);
-
+    isListeningRef.current = isListening;
+  }, [isListening]);
+  
+  // Reset detection state
   const resetDetection = useCallback(() => {
     setIsWakeWordDetected(false);
     setWakeWordConfidence(0);
   }, []);
-
+  
+  // Stop listening for wake word
+  const stopListening = useCallback(() => {
+    console.log('Stopping wake word detection');
+    
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        // Ignore errors from stopping recognition that wasn't running
+      }
+      recognitionRef.current = null;
+    }
+    
+    // Clear any pending timeouts/intervals
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
+    setIsListening(false);
+  }, []);
+  
+  // Start listening for wake word
+  const startListening = useCallback(() => {
+    // Already listening, don't start again
+    if (isListeningRef.current) return;
+    
+    // Check if browser supports speech recognition
+    if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+      console.warn('Wake word detection not supported in this browser');
+      return;
+    }
+    
+    // Stop any existing recognition first
+    stopListening();
+    
+    console.log('Wake word detection started');
+    setIsListening(true);
+    
+    // Create Speech Recognition
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionAPI) {
+      console.error('SpeechRecognition API not available');
+      setIsListening(false);
+      return;
+    }
+    
+    const recognition = new SpeechRecognitionAPI();
+    recognitionRef.current = recognition;
+    
+    // Configure recognition
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    
+    // Handle recognition results
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      try {
+        const results = Array.from({ length: event.results.length }, (_, i) => event.results[i]);
+        const transcript = results
+          .map(result => result[0]?.transcript?.toLowerCase() || '')
+          .join(' ');
+        
+        // Check if transcript contains wake word
+        if (transcript.includes(WAKE_WORD)) {
+          // Get confidence from first result
+          const confidence = event.results[0]?.[0]?.confidence || 0;
+          console.log(`Wake word detected with confidence: ${confidence}`);
+          setWakeWordConfidence(confidence);
+          
+          // Only trigger if confidence is above threshold
+          if (confidence > CONFIDENCE_THRESHOLD) {
+            setIsWakeWordDetected(true);
+            
+            // Set timeout to reset detection automatically
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+            }
+            
+            timeoutRef.current = setTimeout(() => {
+              resetDetection();
+            }, WAKE_WORD_TIMEOUT);
+          }
+        }
+      } catch (error) {
+        console.error('Error processing speech recognition results:', error);
+      }
+    };
+    
+    // Handle recognition errors
+    recognition.onerror = (event: Event) => {
+      console.error('Speech recognition error:', (event as any).error);
+    };
+    
+    // Handle recognition end
+    recognition.onend = () => {
+      // If we're still supposed to be listening, restart recognition
+      if (isListeningRef.current && recognitionRef.current) {
+        try {
+          recognitionRef.current.start();
+        } catch (e) {
+          // Handle potential errors when starting recognition
+          console.error('Error restarting wake word detection:', e);
+          
+          // If we hit an error, try again after a short delay
+          setTimeout(() => {
+            if (isListeningRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {
+                console.error('Failed to restart wake word detection after error');
+                setIsListening(false);
+              }
+            }
+          }, 1000);
+        }
+      }
+    };
+    
+    // Start recognition
+    try {
+      recognition.start();
+    } catch (e) {
+      console.error('Error starting wake word detection:', e);
+      setIsListening(false);
+    }
+  }, [stopListening, resetDetection]);
+  
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      stopListening();
+    };
+  }, [stopListening]);
+  
   return {
     isListening,
     isWakeWordDetected,
+    wakeWordConfidence,
     startListening,
     stopListening,
-    resetDetection,
-    wakeWordConfidence
+    resetDetection
   };
 };
 

@@ -135,7 +135,24 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       isWakeWordListening, startWakeWordListening]);
 
   const toggleMode = () => {
-    setMode(mode === "voice" ? "chat" : "voice");
+    const newMode = mode === "voice" ? "chat" : "voice";
+    setMode(newMode);
+    
+    // Handle wake word detection when switching modes
+    if (newMode === "voice") {
+      // Switching to voice mode - start wake word detection if enabled
+      if (isWakeWordMode && !isWakeWordListening && !listening && !speaking) {
+        setTimeout(() => {
+          startWakeWordListening();
+          setInstruction("Say 'Luna' or tap the microphone");
+        }, 500); // Short delay to allow UI updates first
+      }
+    } else {
+      // Switching to chat mode - stop wake word detection if running
+      if (isWakeWordListening) {
+        stopWakeWordListening();
+      }
+    }
   };
 
   const handleVoiceInput = async (text: string) => {
@@ -203,11 +220,41 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
   const handleMicrophoneToggle = () => {
     if (listening) {
+      // If already listening for voice commands, stop and process
       stopListening();
       setInstruction("Processing...");
     } else {
+      // If wake word detection is active, disable it first
+      if (isWakeWordListening) {
+        stopWakeWordListening();
+      }
+      
+      // Start direct listening
       startListening();
-      setInstruction("Listening...");
+      setInstruction("Luna is listening...");
+      
+      // Play wake sound
+      const audio = new Audio(wakeupSound);
+      audio.play().catch(e => console.error("Failed to play wake sound:", e));
+    }
+  };
+  
+  // Toggle wake word mode (enable/disable wake word)
+  const toggleWakeWordMode = () => {
+    setIsWakeWordMode(!isWakeWordMode);
+    
+    if (isWakeWordMode) {
+      // Turning off wake word detection
+      if (isWakeWordListening) {
+        stopWakeWordListening();
+      }
+      setInstruction("Wake word detection disabled");
+    } else {
+      // Turning on wake word detection
+      if (!listening && !speaking && !isInferring) {
+        startWakeWordListening();
+        setInstruction("Say 'Luna' to activate");
+      }
     }
   };
 
@@ -269,10 +316,38 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
               
               {/* Controls */}
               <div className="flex items-center space-x-2">
+                {/* Wake Word Toggle (only in voice mode) */}
+                {mode === "voice" && (
+                  <button 
+                    onClick={toggleWakeWordMode}
+                    className={`p-2 rounded-full hover:bg-gray-700 transition-colors ${isWakeWordMode ? 'text-accent' : 'text-gray-400'} hover:text-white`}
+                    title={isWakeWordMode ? "Wake word 'Luna' is active" : "Wake word detection off"}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                    </svg>
+                    {isWakeWordMode && (
+                      <motion.div 
+                        className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full"
+                        animate={{ 
+                          scale: [1, 1.2, 1],
+                          opacity: [0.7, 1, 0.7] 
+                        }}
+                        transition={{ 
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      />
+                    )}
+                  </button>
+                )}
+                
                 {/* Mode Toggle */}
                 <button 
                   onClick={toggleMode}
                   className="p-2 rounded-full hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+                  title={mode === "voice" ? "Switch to chat mode" : "Switch to voice mode"}
                 >
                   {mode === "voice" ? (
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -289,6 +364,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 <button 
                   onClick={onClose}
                   className="p-2 rounded-full hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
+                  title="Close assistant"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />

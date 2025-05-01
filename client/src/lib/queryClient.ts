@@ -1,10 +1,19 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// Base API domain for IOT Systems Labs
+export const API_BASE_URL = 'https://iotsystemslabs.local';
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
+    console.error(`Error from ${res.url}:`, text);
     throw new Error(`${res.status}: ${text}`);
   }
+}
+
+export function getApiUrl(path: string): string {
+  // Prefix paths with API_BASE_URL when they're relative
+  return path.startsWith('http') ? path : `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
 export async function apiRequest(
@@ -12,9 +21,15 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
+  const fullUrl = getApiUrl(url);
+  console.log(`Sending ${method} request to: ${fullUrl}`);
+  
+  const res = await fetch(fullUrl, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      'X-Requested-From': 'iotsystemslabs-client',
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -29,8 +44,14 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey[0] as string, {
+    const url = getApiUrl(queryKey[0] as string);
+    console.log(`Fetching data from: ${url}`);
+    
+    const res = await fetch(url, {
       credentials: "include",
+      headers: {
+        'X-Requested-From': 'iotsystemslabs-client',
+      }
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
