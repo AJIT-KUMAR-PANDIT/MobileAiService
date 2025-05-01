@@ -1,5 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-import { ChatCompletionChunk, ChatMessage, CreateMLCEngine, DownloadProgress } from "@mlc-ai/web-llm";
+import { 
+  CreateMLCEngine, 
+  MLCEngine, 
+  MLCEngineConfig,
+  InitProgressCallback,
+  InitProgressReport,
+  ChatCompletionChunk,
+  ChatCompletionMessage
+} from "@mlc-ai/web-llm";
 import { Message, ModelData, ModelOptions, LLMResponse } from "../types/llm";
 
 // Default model config options
