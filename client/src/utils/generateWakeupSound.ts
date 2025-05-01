@@ -2,7 +2,7 @@
  * Generate a wakeup sound using Web Audio API
  * This creates a pleasant "ding" sound for the Luna wake word
  */
-export function generateWakeupSound(): string {
+export async function generateWakeupSound(): Promise<string> {
   // Create an offline audio context to generate the sound
   const audioContext = new OfflineAudioContext({
     numberOfChannels: 2,
@@ -31,18 +31,18 @@ export function generateWakeupSound(): string {
   oscillator.start(0);
   oscillator.stop(1.5);
 
-  // Start rendering
-  return audioContext.startRendering()
-    .then(renderedBuffer => {
-      // Convert the audio buffer to a WAV file as a data URL
-      const wavBytes = bufferToWav(renderedBuffer);
-      const blob = new Blob([wavBytes], { type: 'audio/wav' });
-      return URL.createObjectURL(blob);
-    })
-    .catch(err => {
-      console.error('Error generating wakeup sound:', err);
-      return '';
-    });
+  try {
+    // Start rendering
+    const renderedBuffer = await audioContext.startRendering();
+    
+    // Convert the audio buffer to a WAV file as a data URL
+    const wavBytes = bufferToWav(renderedBuffer);
+    const blob = new Blob([wavBytes], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Error generating wakeup sound:', err);
+    return '';
+  }
 }
 
 /**

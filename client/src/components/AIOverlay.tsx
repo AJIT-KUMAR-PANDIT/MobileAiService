@@ -1,4 +1,4 @@
-import { FC, useEffect, useState } from "react";
+import { FC, useEffect, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { VoiceUI } from "./VoiceUI";
 import { ChatUI } from "./ChatUI";
@@ -10,8 +10,11 @@ import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
 import useWakeWordDetection from "@/services/WakeWordService";
 import prompts from "@/data/prompts.json";
 
-// Import wakeup sound
-import wakeupSound from '../assets/sounds/wakeupsound.mp3';
+// Import sound generator utility
+import { generateWakeupSound } from '@/utils/generateWakeupSound';
+
+// Create a placeholder URL for the wakeup sound
+const DEFAULT_SOUND_URL = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAA=';
 
 interface AIOverlayProps {
   isVisible: boolean;
@@ -30,6 +33,31 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   const [aiResponse, setAIResponse] = useState("How can I help you today?");
   const [instruction, setInstruction] = useState("Say 'Luna' or tap the microphone");
   const [isWakeWordMode, setIsWakeWordMode] = useState(true);
+  const [wakeupSoundUrl, setWakeupSoundUrl] = useState(DEFAULT_SOUND_URL);
+  
+  // Generate wakeup sound when component mounts
+  useEffect(() => {
+    async function createSound() {
+      try {
+        const soundUrl = await generateWakeupSound();
+        if (soundUrl) {
+          setWakeupSoundUrl(soundUrl);
+          console.log("Wake sound generated successfully");
+        }
+      } catch (error) {
+        console.error("Failed to generate wakeup sound:", error);
+      }
+    }
+    
+    createSound();
+    
+    // Clean up on unmount
+    return () => {
+      if (wakeupSoundUrl && wakeupSoundUrl !== DEFAULT_SOUND_URL) {
+        URL.revokeObjectURL(wakeupSoundUrl);
+      }
+    };
+  }, []);
 
   const { 
     isModelLoaded, 
@@ -94,7 +122,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       console.log("Wake word 'Luna' detected!");
       
       // Play wake sound
-      const audio = new Audio(wakeupSound);
+      const audio = new Audio(wakeupSoundUrl);
       audio.play().catch(e => console.error("Failed to play wake sound:", e));
       
       // Stop wake word detection temporarily
@@ -109,7 +137,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         startListening();
       }, 500);
     }
-  }, [isWakeWordDetected, isModelLoaded, listening, startListening, stopWakeWordListening, resetDetection]);
+  }, [isWakeWordDetected, isModelLoaded, listening, startListening, stopWakeWordListening, resetDetection, wakeupSoundUrl]);
   
   // Process transcript when available
   useEffect(() => {
@@ -234,7 +262,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       setInstruction("Luna is listening...");
       
       // Play wake sound
-      const audio = new Audio(wakeupSound);
+      const audio = new Audio(wakeupSoundUrl);
       audio.play().catch(e => console.error("Failed to play wake sound:", e));
     }
   };
