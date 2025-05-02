@@ -48,9 +48,13 @@ const DB_VERSION = 1;
 const initializeDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     // Request persistent storage with user interaction
+    // In the initializeDB function, update the requestPersistentStorage function
     const requestPersistentStorage = async (): Promise<boolean> => {
       // Check if we're in a Capacitor environment (mobile)
       const isCapacitor = typeof (window as any).Capacitor !== "undefined";
+
+      // Define the desired storage size (3GB in bytes)
+      const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
 
       try {
         if (isCapacitor) {
@@ -176,6 +180,66 @@ const initializeDB = (): Promise<IDBDatabase> => {
               );
             }
 
+            // Request increased quota regardless of persistence status
+            try {
+              // Request increased quota for temporary storage (IndexedDB)
+              if ("webkitTemporaryStorage" in navigator) {
+                // @ts-ignore - Using non-standard API
+                navigator.webkitTemporaryStorage.requestQuota(
+                  desiredStorageSize,
+                  (grantedBytes: number) => {
+                    console.log(
+                      `Temporary storage quota granted: ${formatByteSize(
+                        grantedBytes
+                      )}`
+                    );
+                  },
+                  (error: Error) => {
+                    console.warn(
+                      "Error requesting temporary storage quota:",
+                      error
+                    );
+                  }
+                );
+              }
+
+              // Request increased quota for persistent storage (Cache API)
+              if ("webkitPersistentStorage" in navigator) {
+                // @ts-ignore - Using non-standard API
+                navigator.webkitPersistentStorage.requestQuota(
+                  desiredStorageSize,
+                  (grantedBytes: number) => {
+                    console.log(
+                      `Persistent storage quota granted: ${formatByteSize(
+                        grantedBytes
+                      )}`
+                    );
+                  },
+                  (error: Error) => {
+                    console.warn(
+                      "Error requesting persistent storage quota:",
+                      error
+                    );
+                  }
+                );
+              }
+
+              // For modern browsers that support the Storage API
+              if (navigator.storage && navigator.storage.estimate) {
+                const estimate = await navigator.storage.estimate();
+                console.log(
+                  `Current storage usage: ${formatByteSize(
+                    estimate.usage || 0
+                  )}/${formatByteSize(estimate.quota || 0)}`
+                );
+              }
+            } catch (quotaError) {
+              console.warn(
+                "Error requesting increased storage quota:",
+                quotaError
+              );
+            }
+
             return isPersisted;
           }
         }
@@ -285,36 +349,117 @@ const checkModelExists = async (modelId: string): Promise<boolean> => {
   }
 };
 
-// Save model data to IndexedDB
+// Save model data to IndexedDB with improved quota handling
 const saveModelToIndexedDB = async (
   modelId: string,
   modelData: any
 ): Promise<boolean> => {
-  try {
-    const db = await initializeDB();
-    return new Promise<boolean>((resolve, reject) => {
-      const transaction = db.transaction([STORE_NAME], "readwrite");
-      const store = transaction.objectStore(STORE_NAME);
-      const request = store.put({
-        id: modelId,
-        data: modelData,
-        timestamp: Date.now(),
+  let retries = 0;
+  const maxRetries = 3; // Increased from 2 to 3 for more persistence
+
+  while (retries <= maxRetries) {
+    try {
+      const db = await initializeDB();
+      return new Promise<boolean>((resolve, reject) => {
+        const transaction = db.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.put({
+          id: modelId,
+          data: modelData,
+          timestamp: Date.now(),
+        });
+
+        request.onsuccess = () => resolve(true);
+        request.onerror = (event: Event) => {
+          const target = event.target as IDBRequest;
+          console.error("Error saving model:", target?.error);
+          reject(target?.error || new Error("Unknown IndexedDB error"));
+        };
       });
+    } catch (error) {
+      const err = error as Error;
+      // Check for quota exceeded errors with broader detection
+      if (
+        (err.name === "QuotaExceededError" ||
+          err.message.includes("quota") ||
+          err.message.includes("storage") ||
+          err.message.includes("full")) &&
+        retries < maxRetries
+      ) {
+        console.warn(
+          `Storage quota exceeded (attempt ${retries + 1}/${
+            maxRetries + 1
+          }), performing aggressive cleanup...`
+        );
 
-      request.onsuccess = () => {
-        resolve(true);
-      };
+        // First try to clear old caches
+        await clearOldCaches();
 
-      request.onerror = (event: Event) => {
-        const target = event.target as IDBRequest;
-        console.error("Error saving model:", target?.error);
-        reject(target?.error || new Error("Unknown IndexedDB error"));
-      };
-    });
-  } catch (error) {
-    console.error("Error saving model to IndexedDB:", error);
-    return false;
+        // If still failing, try more aggressive cleanup - remove all other models
+        if (retries > 0) {
+          try {
+            console.log(
+              "Performing emergency cleanup - removing other models..."
+            );
+            const db = await initializeDB();
+            const transaction = db.transaction([STORE_NAME], "readwrite");
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+              const cursor = (event.target as IDBRequest).result;
+              if (cursor) {
+                const record = cursor.value;
+                // Keep only the current model
+                if (record && record.id !== modelId) {
+                  console.log(`Emergency cleanup: removing model ${record.id}`);
+                  cursor.delete();
+                }
+                cursor.continue();
+              }
+            };
+
+            await new Promise((resolve) => {
+              transaction.oncomplete = resolve;
+            });
+
+            // Request persistent storage again
+            if (navigator.storage && navigator.storage.persist) {
+              const isPersisted = await navigator.storage.persist();
+              console.log(
+                `Storage persistence after emergency cleanup: ${isPersisted}`
+              );
+            }
+
+            // Check storage usage after cleanup
+            if (navigator.storage && navigator.storage.estimate) {
+              const estimate = await navigator.storage.estimate();
+              const used = estimate.usage || 0;
+              const quota = estimate.quota || 0;
+              console.log(
+                `Storage after emergency cleanup: ${formatByteSize(
+                  used
+                )}/${formatByteSize(quota)}`
+              );
+            }
+          } catch (cleanupError) {
+            console.error("Error during emergency cleanup:", cleanupError);
+          }
+        }
+
+        retries++;
+        // Add delay between retries to allow browser to complete garbage collection
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      } else {
+        console.error("Error saving model to IndexedDB:", error);
+        return false;
+      }
+    }
   }
+
+  // If we get here, all retries failed
+  console.error(`Failed to save model after ${maxRetries} retries`);
+  return false;
 };
 
 // Load model data from IndexedDB
@@ -689,46 +834,298 @@ export const useLLMService = (options = defaultModelOptions) => {
   };
 };
 
-// Clear old caches to free up space
+// In the clearOldCaches function, update the quota request section
 const clearOldCaches = async (): Promise<void> => {
   try {
+    console.log("Starting comprehensive cache cleanup...");
+
+    // Track cleanup statistics
+    let totalFreed = 0;
+    let cacheCleanupCount = 0;
+    let modelCleanupCount = 0;
+
     // Clear old service worker caches if available
     if ("caches" in window) {
-      const cacheNames = await window.caches.keys();
-      const oldCachePromises = cacheNames.map((cacheName) => {
-        // Keep only the current cache version
-        if (cacheName !== "webllm-v1") {
-          return window.caches.delete(cacheName);
-        }
-        return Promise.resolve(false);
-      });
+      try {
+        const cacheNames = await window.caches.keys();
+        console.log(`Found ${cacheNames.length} cache entries to process`);
 
-      await Promise.all(oldCachePromises);
-      console.log("Old caches cleared");
+        const oldCachePromises = cacheNames.map(async (cacheName) => {
+          // Keep only the current cache version
+          if (cacheName !== "webllm-v1") {
+            try {
+              // Get cache size before deletion (if possible)
+              let cacheSize = 0;
+              try {
+                const cache = await window.caches.open(cacheName);
+                const keys = await cache.keys();
+                cacheSize = keys.length;
+              } catch (sizeError) {
+                // Ignore size calculation errors
+              }
+
+              const deleted = await window.caches.delete(cacheName);
+              if (deleted) {
+                cacheCleanupCount++;
+                console.log(
+                  `Deleted cache: ${cacheName} (contained ~${cacheSize} items)`
+                );
+              }
+              return deleted;
+            } catch (err) {
+              console.warn(`Failed to delete cache ${cacheName}:`, err);
+              return false;
+            }
+          }
+          return false;
+        });
+
+        const results = await Promise.all(oldCachePromises);
+        const deletedCount = results.filter(Boolean).length;
+        console.log(`Cleared ${deletedCount} old caches`);
+
+        // After clearing caches, check storage usage again
+        if (navigator.storage && navigator.storage.estimate) {
+          const estimate = await navigator.storage.estimate();
+          const used = estimate.usage || 0;
+          const quota = estimate.quota || 0;
+          console.log(
+            `Storage after cache cleanup: ${formatByteSize(
+              used
+            )}/${formatByteSize(quota)} (${((used / quota) * 100).toFixed(1)}%)`
+          );
+
+          // Define the desired storage size (3GB in bytes)
+          const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
+
+          // Always request the increased quota, not just when usage is high
+          console.log("Requesting increased storage quota (3GB)...");
+          try {
+            const isPersistent = await navigator.storage.persist();
+            console.log(
+              `Persistent storage ${isPersistent ? "granted" : "denied"}`
+            );
+
+            // Request increased quota for both storage types
+            if ("webkitTemporaryStorage" in navigator) {
+              // @ts-ignore - Using non-standard API
+              navigator.webkitTemporaryStorage.requestQuota(
+                desiredStorageSize,
+                (grantedBytes: number) => {
+                  console.log(
+                    `New temporary quota granted: ${formatByteSize(
+                      grantedBytes
+                    )}`
+                  );
+                },
+                (error: Error) => {
+                  console.warn("Error requesting temporary quota:", error);
+                }
+              );
+            }
+
+            if ("webkitPersistentStorage" in navigator) {
+              // @ts-ignore - Using non-standard API
+              navigator.webkitPersistentStorage.requestQuota(
+                desiredStorageSize,
+                (grantedBytes: number) => {
+                  console.log(
+                    `New persistent quota granted: ${formatByteSize(
+                      grantedBytes
+                    )}`
+                  );
+                },
+                (error: Error) => {
+                  console.warn("Error requesting persistent quota:", error);
+                }
+              );
+            }
+          } catch (persistError) {
+            console.warn("Error requesting persistent storage:", persistError);
+          }
+        }
+      } catch (cacheError) {
+        console.warn("Error clearing browser caches:", cacheError);
+      }
     }
 
-    // Clear old IndexedDB data (models older than 30 days)
-    const db = await initializeDB();
-    const transaction = db.transaction([STORE_NAME], "readwrite");
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.openCursor();
+    // Clear old IndexedDB data with more aggressive strategy
+    try {
+      const db = await initializeDB();
+      const transaction = db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
 
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      // First pass: get all models to analyze
+      const getAllRequest = store.getAll();
+      const models = await new Promise<any[]>((resolve) => {
+        getAllRequest.onsuccess = () => resolve(getAllRequest.result || []);
+        getAllRequest.onerror = () => resolve([]);
+      });
 
-    request.onsuccess = (event) => {
-      const cursor = (event.target as IDBRequest).result;
-      if (cursor) {
-        const record = cursor.value;
-        if (record.timestamp && record.timestamp < thirtyDaysAgo) {
-          console.log(`Removing old model: ${record.id}`);
-          cursor.delete();
+      console.log(`Found ${models.length} models in IndexedDB`);
+
+      // Sort models by timestamp (oldest first)
+      models.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+      // Keep track of models to delete
+      const modelsToDelete: string[] = [];
+
+      // Strategy 1: Remove models older than 14 days (reduced from 30)
+      const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+      models.forEach((model) => {
+        if (model.timestamp && model.timestamp < twoWeeksAgo) {
+          modelsToDelete.push(model.id);
         }
-        cursor.continue();
-      }
-    };
+      });
 
-    console.log("Checked for old model data to clear");
+      // Strategy 2: If we have more than 3 models, keep only the 3 most recent
+      if (models.length > 3) {
+        // Skip the 3 most recent models (which are at the end after sorting)
+        for (let i = 0; i < models.length - 3; i++) {
+          if (!modelsToDelete.includes(models[i].id)) {
+            modelsToDelete.push(models[i].id);
+          }
+        }
+      }
+
+      // Delete the identified models
+      for (const modelId of modelsToDelete) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const deleteRequest = store.delete(modelId);
+            deleteRequest.onsuccess = () => {
+              modelCleanupCount++;
+              console.log(`Removed model: ${modelId}`);
+              resolve();
+            };
+            deleteRequest.onerror = () =>
+              reject(new Error(`Failed to delete model ${modelId}`));
+          });
+        } catch (deleteError) {
+          console.warn(`Error deleting model ${modelId}:`, deleteError);
+        }
+      }
+
+      console.log(`Cleared ${modelCleanupCount} models from IndexedDB`);
+
+      // For IoT environments, perform additional cleanup if needed
+      const isIoTEnvironment =
+        window.location.hostname.includes("iot") ||
+        navigator.userAgent.includes("IoT") ||
+        document.title.includes("IoT");
+
+      if (isIoTEnvironment && models.length > 1) {
+        console.log("IoT environment detected, performing additional cleanup");
+        // In IoT environments, be more aggressive - keep only the most recent model
+        const mostRecentModel = models[models.length - 1]?.id;
+
+        // Second pass to delete all but the most recent
+        const request = store.openCursor();
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            const record = cursor.value;
+            if (record && record.id !== mostRecentModel) {
+              console.log(`IoT cleanup: removing model ${record.id}`);
+              cursor.delete();
+              modelCleanupCount++;
+            }
+            cursor.continue();
+          }
+        };
+
+        await new Promise((resolve) => {
+          transaction.oncomplete = resolve;
+        });
+      }
+    } catch (dbError) {
+      console.warn("Error clearing old IndexedDB data:", dbError);
+    }
+
+    // Final cleanup report
+    console.log(
+      `Cleanup complete: Removed ${cacheCleanupCount} caches and ${modelCleanupCount} models`
+    );
+
+    // Check final storage status
+    if (navigator.storage && navigator.storage.estimate) {
+      const finalEstimate = await navigator.storage.estimate();
+      const used = finalEstimate.usage || 0;
+      const quota = finalEstimate.quota || 0;
+      console.log(
+        `Final storage status: ${formatByteSize(used)}/${formatByteSize(
+          quota
+        )} (${((used / quota) * 100).toFixed(1)}%)`
+      );
+    }
   } catch (error) {
-    console.error("Error clearing caches:", error);
+    console.error("Error in clearOldCaches:", error);
+  }
+};
+
+// Add this function after the clearOldCaches function
+export const requestIncreasedStorageQuota = async (): Promise<void> => {
+  const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
+
+  console.log("Requesting increased storage quota (3GB)...");
+
+  try {
+    // Request persistent storage first
+    if (navigator.storage && navigator.storage.persist) {
+      const isPersistent = await navigator.storage.persist();
+      console.log(`Persistent storage ${isPersistent ? "granted" : "denied"}`);
+    }
+
+    // Request increased quota for IndexedDB (temporary storage)
+    if ("webkitTemporaryStorage" in navigator) {
+      await new Promise<void>((resolve) => {
+        // @ts-ignore - Using non-standard API
+        navigator.webkitTemporaryStorage.requestQuota(
+          desiredStorageSize,
+          (grantedBytes: number) => {
+            console.log(
+              `IndexedDB quota granted: ${formatByteSize(grantedBytes)}`
+            );
+            resolve();
+          },
+          (error: Error) => {
+            console.warn("Error requesting IndexedDB quota:", error);
+            resolve();
+          }
+        );
+      });
+    }
+
+    // Request increased quota for Cache API (persistent storage)
+    if ("webkitPersistentStorage" in navigator) {
+      await new Promise<void>((resolve) => {
+        // @ts-ignore - Using non-standard API
+        navigator.webkitPersistentStorage.requestQuota(
+          desiredStorageSize,
+          (grantedBytes: number) => {
+            console.log(
+              `Cache storage quota granted: ${formatByteSize(grantedBytes)}`
+            );
+            resolve();
+          },
+          (error: Error) => {
+            console.warn("Error requesting cache storage quota:", error);
+            resolve();
+          }
+        );
+      });
+    }
+
+    // Check final storage allocation
+    if (navigator.storage && navigator.storage.estimate) {
+      const estimate = await navigator.storage.estimate();
+      console.log(
+        `Storage after quota request: ${formatByteSize(
+          estimate.usage || 0
+        )}/${formatByteSize(estimate.quota || 0)}`
+      );
+    }
+  } catch (error) {
+    console.error("Error requesting increased storage quota:", error);
   }
 };
