@@ -49,6 +49,7 @@ const initializeDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     // Request persistent storage with user interaction
     // In the initializeDB function, update the requestPersistentStorage function
+    // In the initializeDB function, update the requestPersistentStorage function
     const requestPersistentStorage = async (): Promise<boolean> => {
       // Check if we're in a Capacitor environment (mobile)
       const isCapacitor = typeof (window as any).Capacitor !== "undefined";
@@ -57,6 +58,27 @@ const initializeDB = (): Promise<IDBDatabase> => {
       const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
 
       try {
+        // Check if we've already requested permission in this session
+        const sessionStorageKey = "luna-storage-permission-requested";
+        const alreadyRequestedThisSession =
+          sessionStorage.getItem(sessionStorageKey) === "true";
+
+        // Check if we've already requested permission in a previous session
+        const localStorageKey = "luna-storage-permission-granted";
+        const alreadyGrantedPreviously =
+          localStorage.getItem(localStorageKey) === "true";
+
+        // If we've already handled permissions in this session, skip the prompt
+        if (alreadyRequestedThisSession) {
+          console.log(
+            "Storage permission already requested in this session, skipping prompt"
+          );
+          return alreadyGrantedPreviously || false;
+        }
+
+        // Mark that we've requested permission in this session
+        sessionStorage.setItem(sessionStorageKey, "true");
+
         if (isCapacitor) {
           try {
             // Try to import Capacitor modules
@@ -93,11 +115,16 @@ const initializeDB = (): Promise<IDBDatabase> => {
                     key: "storage-permission-asked",
                     value: "true",
                   });
+                  localStorage.setItem(localStorageKey, "true");
                   console.log("Storage permission granted by user on mobile");
+                  return true;
                 } else {
                   console.warn("Storage permission denied by user on mobile");
+                  localStorage.setItem(localStorageKey, "false");
+                  return false;
                 }
               }
+              return value === "true";
             } else {
               // Fallback to browser approach if modules aren't available
               throw new Error("Capacitor modules not available");
@@ -108,140 +135,81 @@ const initializeDB = (): Promise<IDBDatabase> => {
               importError
             );
             // Use browser approach as fallback
-            if (navigator.storage && navigator.storage.persist) {
-              const isPersisted = await navigator.storage.persisted();
-              if (!isPersisted) {
-                const granted = await navigator.storage.persist();
-                console.log(
-                  `Persistent storage on mobile (browser fallback): ${granted}`
-                );
-              }
-            }
           }
-        } else {
-          // For web browsers - improved implementation
-          if (navigator.storage && navigator.storage.persist) {
-            // Check current persistence state
-            let isPersisted = await navigator.storage.persisted();
-            console.log(
-              `Persistent storage status before request: ${isPersisted}`
-            );
+        }
 
-            if (!isPersisted) {
-              // First try the permission request API if available
-              if (navigator.permissions) {
-                try {
-                  const permissionStatus = await navigator.permissions.query({
-                    name: "persistent-storage" as PermissionName,
-                  });
+        // For web browsers - improved implementation with persistence check
+        if (navigator.storage && navigator.storage.persist) {
+          // First check if storage is already persisted
+          const isPersisted = await navigator.storage.persisted();
+          console.log(`Storage already persisted: ${isPersisted}`);
 
-                  console.log(
-                    `Storage permission status: ${permissionStatus.state}`
+          if (isPersisted) {
+            localStorage.setItem(localStorageKey, "true");
+            return true;
+          }
+
+          // If not already persisted and not previously granted, ask user
+          if (!alreadyGrantedPreviously) {
+            // Try the permission API first
+            if (navigator.permissions) {
+              try {
+                const permissionStatus = await navigator.permissions.query({
+                  name: "persistent-storage" as PermissionName,
+                });
+
+                if (permissionStatus.state === "granted") {
+                  const persistResult = await navigator.storage.persist();
+                  localStorage.setItem(
+                    localStorageKey,
+                    persistResult ? "true" : "false"
                   );
-
-                  // If permission is already granted, try to persist
-                  if (permissionStatus.state === "granted") {
-                    isPersisted = await navigator.storage.persist();
-                  }
-                  // Otherwise show the dialog
-                  else {
-                    const userConsent = window.confirm(
-                      "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
-                    );
-
-                    if (userConsent) {
-                      isPersisted = await navigator.storage.persist();
-                    }
-                  }
-                } catch (permError) {
-                  console.warn("Permission API error:", permError);
-                  // Fallback to direct persist request
+                  return persistResult;
+                } else if (permissionStatus.state === "prompt") {
+                  // Show our own dialog before triggering the browser dialog
                   const userConsent = window.confirm(
                     "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
                   );
 
                   if (userConsent) {
-                    isPersisted = await navigator.storage.persist();
+                    const persistResult = await navigator.storage.persist();
+                    localStorage.setItem(
+                      localStorageKey,
+                      persistResult ? "true" : "false"
+                    );
+                    return persistResult;
+                  } else {
+                    localStorage.setItem(localStorageKey, "false");
+                    return false;
                   }
                 }
-              } else {
-                // Direct persist request if permissions API not available
-                const userConsent = window.confirm(
-                  "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
-                );
-
-                if (userConsent) {
-                  isPersisted = await navigator.storage.persist();
-                }
+                // If denied, we can't do much
+                return false;
+              } catch (permError) {
+                console.warn("Permission API error:", permError);
               }
-
-              console.log(
-                `Persistent storage after user consent: ${isPersisted}`
-              );
             }
 
-            // Request increased quota regardless of persistence status
-            try {
-              // Request increased quota for temporary storage (IndexedDB)
-              if ("webkitTemporaryStorage" in navigator) {
-                // @ts-ignore - Using non-standard API
-                navigator.webkitTemporaryStorage.requestQuota(
-                  desiredStorageSize,
-                  (grantedBytes: number) => {
-                    console.log(
-                      `Temporary storage quota granted: ${formatByteSize(
-                        grantedBytes
-                      )}`
-                    );
-                  },
-                  (error: Error) => {
-                    console.warn(
-                      "Error requesting temporary storage quota:",
-                      error
-                    );
-                  }
-                );
-              }
+            // Fallback to direct persist request with confirmation
+            const userConsent = window.confirm(
+              "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
+            );
 
-              // Request increased quota for persistent storage (Cache API)
-              if ("webkitPersistentStorage" in navigator) {
-                // @ts-ignore - Using non-standard API
-                navigator.webkitPersistentStorage.requestQuota(
-                  desiredStorageSize,
-                  (grantedBytes: number) => {
-                    console.log(
-                      `Persistent storage quota granted: ${formatByteSize(
-                        grantedBytes
-                      )}`
-                    );
-                  },
-                  (error: Error) => {
-                    console.warn(
-                      "Error requesting persistent storage quota:",
-                      error
-                    );
-                  }
-                );
-              }
-
-              // For modern browsers that support the Storage API
-              if (navigator.storage && navigator.storage.estimate) {
-                const estimate = await navigator.storage.estimate();
-                console.log(
-                  `Current storage usage: ${formatByteSize(
-                    estimate.usage || 0
-                  )}/${formatByteSize(estimate.quota || 0)}`
-                );
-              }
-            } catch (quotaError) {
-              console.warn(
-                "Error requesting increased storage quota:",
-                quotaError
+            if (userConsent) {
+              const persistResult = await navigator.storage.persist();
+              localStorage.setItem(
+                localStorageKey,
+                persistResult ? "true" : "false"
               );
+              return persistResult;
+            } else {
+              localStorage.setItem(localStorageKey, "false");
+              return false;
             }
-
-            return isPersisted;
           }
+
+          // If previously granted but not currently persisted, try to persist without prompting
+          return await navigator.storage.persist();
         }
 
         return false;
