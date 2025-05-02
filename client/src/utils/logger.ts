@@ -1,230 +1,169 @@
 /**
  * Logger Utility
  * 
- * This utility provides enhanced logging capabilities for both web and Capacitor mobile environments.
- * It includes special formatting for IoT system logs and can handle different log levels.
+ * Provides standardized logging across the application with category-based
+ * filtering, severity levels, and enhanced formatting.
  */
 
-import { isCapacitorApp } from '@/config/iotDomainConfig';
-
-// Log levels for filtering
-export enum LogLevel {
-  DEBUG = 'debug',
-  INFO = 'info',
-  WARN = 'warn',
-  ERROR = 'error'
-}
-
-// Log categories for organization
 export enum LogCategory {
-  VOICE = 'voice',
-  AI = 'ai',
-  IOT = 'iot',
-  UI = 'ui',
-  SYSTEM = 'system',
-  NETWORK = 'network'
+  SYSTEM = 'SYSTEM',
+  IOT = 'IOT',
+  MODEL = 'MODEL',
+  UI = 'UI',
+  VOICE = 'VOICE',
+  SEARCH = 'SEARCH',
+  STORAGE = 'STORAGE',
+  ERROR = 'ERROR',
+  DEBUG = 'DEBUG'
 }
 
-// Configuration for logger
-interface LoggerConfig {
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3
+}
+
+interface LoggerOptions {
   minLevel: LogLevel;
-  enabledCategories: LogCategory[];
-  showTimestamp: boolean;
-  showPlatform: boolean;
+  enabledCategories: LogCategory[] | 'all';
+  logToConsole: boolean;
+  enableTimestamps: boolean;
 }
 
-// Default configuration
-const defaultConfig: LoggerConfig = {
-  minLevel: LogLevel.DEBUG,
-  enabledCategories: Object.values(LogCategory),
-  showTimestamp: true,
-  showPlatform: true
-};
-
-// Current configuration (can be updated at runtime)
-let config: LoggerConfig = { ...defaultConfig };
-
-/**
- * Style definitions for different log categories
- */
-const logStyles = {
-  [LogCategory.VOICE]: { bg: '#9c27b0', fg: '#ffffff' },
-  [LogCategory.AI]: { bg: '#2196f3', fg: '#ffffff' },
-  [LogCategory.IOT]: { bg: '#ff5722', fg: '#ffffff' },
-  [LogCategory.UI]: { bg: '#4caf50', fg: '#ffffff' },
-  [LogCategory.SYSTEM]: { bg: '#607d8b', fg: '#ffffff' },
-  [LogCategory.NETWORK]: { bg: '#ff9800', fg: '#ffffff' }
-};
-
-/**
- * Style definitions for different log levels
- */
-const levelStyles = {
-  [LogLevel.DEBUG]: { bg: '#eeeeee', fg: '#333333' },
-  [LogLevel.INFO]: { bg: '#2196f3', fg: '#ffffff' },
-  [LogLevel.WARN]: { bg: '#ff9800', fg: '#ffffff' },
-  [LogLevel.ERROR]: { bg: '#f44336', fg: '#ffffff' }
-};
-
-/**
- * Platform-specific styling
- */
-function getPlatformStyle(): { bg: string, fg: string, name: string } {
-  if (isCapacitorApp()) {
-    return { bg: '#9c27b0', fg: '#ffffff', name: 'MOBILE' };
-  } else {
-    return { bg: '#4caf50', fg: '#ffffff', name: 'WEB' };
-  }
-}
-
-/**
- * Get the current timestamp in a readable format
- */
-function getTimestamp(): string {
-  return new Date().toISOString();
-}
-
-/**
- * Check if the log should be displayed based on level and category
- */
-function shouldLog(level: LogLevel, category: LogCategory): boolean {
-  // Check if category is enabled
-  if (!config.enabledCategories.includes(category)) {
-    return false;
-  }
+class Logger {
+  private static instance: Logger;
+  private options: LoggerOptions;
+  private logHistory: string[] = [];
   
-  // Check if level is high enough
-  const levels = Object.values(LogLevel);
-  return levels.indexOf(level) >= levels.indexOf(config.minLevel);
-}
-
-/**
- * Core logging function
- */
-function logWithFormat(
-  level: LogLevel, 
-  category: LogCategory, 
-  message: string,
-  data?: any
-): void {
-  if (!shouldLog(level, category)) {
-    return;
-  }
-  
-  const timestamp = config.showTimestamp ? getTimestamp() : '';
-  const platform = config.showPlatform ? getPlatformStyle() : null;
-  const categoryStyle = logStyles[category];
-  const levelStyle = levelStyles[level];
-  
-  // Build prefix parts
-  const prefixParts: string[] = [];
-  
-  if (config.showTimestamp) {
-    prefixParts.push(`[${timestamp}]`);
-  }
-  
-  if (config.showPlatform && platform) {
-    prefixParts.push(`[${platform.name}]`);
-  }
-  
-  prefixParts.push(`[${category.toUpperCase()}]`);
-  prefixParts.push(`[${level.toUpperCase()}]`);
-  
-  const prefix = prefixParts.join(' ');
-  
-  // Use appropriate console method based on level
-  let consoleMethod: (...args: any[]) => void;
-  switch (level) {
-    case LogLevel.ERROR:
-      consoleMethod = console.error;
-      break;
-    case LogLevel.WARN:
-      consoleMethod = console.warn;
-      break;
-    case LogLevel.INFO:
-      consoleMethod = console.info;
-      break;
-    case LogLevel.DEBUG:
-    default:
-      consoleMethod = console.log;
-      break;
-  }
-  
-  // Log with styling
-  if (typeof window !== 'undefined' && !isCapacitorApp()) {
-    // Browser environment with CSS styling
-    consoleMethod(
-      `%c${prefix}%c ${message}`,
-      `background: ${categoryStyle.bg}; color: ${categoryStyle.fg}; font-weight: bold; padding: 2px 4px; border-radius: 3px;`,
-      'background: transparent; color: inherit;'
-    );
+  private constructor() {
+    this.options = {
+      minLevel: LogLevel.INFO,
+      enabledCategories: 'all',
+      logToConsole: true,
+      enableTimestamps: true
+    };
     
-    // Log additional data if provided
-    if (data !== undefined) {
-      console.log(
-        '%c [DATA] %c',
-        `background: #555; color: #fff; padding: 2px 4px; border-radius: 2px;`,
-        'background: transparent;',
-        data
-      );
-    }
-  } else {
-    // Mobile or non-browser environment
-    consoleMethod(`${prefix} ${message}`);
-    if (data !== undefined) {
-      consoleMethod('[DATA]', data);
+    // In development mode, set a lower minimum log level
+    if (import.meta.env.DEV) {
+      this.options.minLevel = LogLevel.DEBUG;
     }
   }
   
-  // Special case for IoT logs - always ensure they're visible in both environments
-  if (category === LogCategory.IOT && message.includes('nakprciotsystemslabs.local')) {
-    // Make IoT logs extra visible, regardless of environment
-    if (typeof window !== 'undefined') {
-      console.log(
-        '%c [IOT SYSTEMS REQUEST] %c',
-        'background: #ff5722; color: white; padding: 3px 6px; border-radius: 3px; font-weight: bold;',
-        'background: transparent;',
-        message
-      );
-    } else {
-      console.log('### IOT SYSTEMS REQUEST ###', message);
+  public static getInstance(): Logger {
+    if (!Logger.instance) {
+      Logger.instance = new Logger();
+    }
+    return Logger.instance;
+  }
+  
+  public setOptions(options: Partial<LoggerOptions>): void {
+    this.options = { ...this.options, ...options };
+  }
+  
+  private formatTimestamp(): string {
+    return new Date().toISOString();
+  }
+  
+  private getLogPrefix(level: LogLevel, category: LogCategory): string {
+    const timestamp = this.options.enableTimestamps ? `[${this.formatTimestamp()}] ` : '';
+    const platform = typeof window !== 'undefined' ? '[WEB] ' : '[SERVER] ';
+    return `${timestamp}${platform}[${category}] [${LogLevel[level]}]`;
+  }
+  
+  private getConsoleColor(level: LogLevel): string {
+    switch (level) {
+      case LogLevel.DEBUG:
+        return '#9e9e9e'; // Gray
+      case LogLevel.INFO:
+        return '#607d8b'; // Blue Gray
+      case LogLevel.WARN:
+        return '#ff9800'; // Orange
+      case LogLevel.ERROR:
+        return '#f44336'; // Red
+      default:
+        return '#9e9e9e'; // Gray
+    }
+  }
+  
+  private shouldLog(level: LogLevel, category: LogCategory): boolean {
+    // Check minimum log level
+    if (level < this.options.minLevel) {
+      return false;
     }
     
-    if (data) {
-      console.log('IoT Request Data:', data);
+    // Check if category is enabled
+    if (this.options.enabledCategories === 'all') {
+      return true;
     }
+    
+    return this.options.enabledCategories.includes(category);
+  }
+  
+  private log(level: LogLevel, category: LogCategory, message: string, ...args: any[]): void {
+    if (!this.shouldLog(level, category)) {
+      return;
+    }
+    
+    const prefix = this.getLogPrefix(level, category);
+    const fullMessage = `${prefix} ${message}`;
+    
+    // Add to history
+    this.logHistory.push(fullMessage);
+    
+    // Trim history if it gets too long
+    if (this.logHistory.length > 1000) {
+      this.logHistory = this.logHistory.slice(-500);
+    }
+    
+    // Log to console if enabled
+    if (this.options.logToConsole) {
+      const color = this.getConsoleColor(level);
+      
+      if (args.length > 0) {
+        console.log(
+          `%c${prefix}%c ${message}`,
+          `background: ${color}; color: #ffffff; font-weight: bold; padding: 2px 4px; border-radius: 3px;`,
+          'background: transparent; color: inherit;',
+          ...args
+        );
+      } else {
+        console.log(
+          `%c${prefix}%c ${message}`,
+          `background: ${color}; color: #ffffff; font-weight: bold; padding: 2px 4px; border-radius: 3px;`,
+          'background: transparent; color: inherit;'
+        );
+      }
+    }
+  }
+  
+  public debug(category: LogCategory, message: string, ...args: any[]): void {
+    this.log(LogLevel.DEBUG, category, message, ...args);
+  }
+  
+  public info(category: LogCategory, message: string, ...args: any[]): void {
+    this.log(LogLevel.INFO, category, message, ...args);
+  }
+  
+  public warn(category: LogCategory, message: string, ...args: any[]): void {
+    this.log(LogLevel.WARN, category, message, ...args);
+  }
+  
+  public error(category: LogCategory, message: string, ...args: any[]): void {
+    this.log(LogLevel.ERROR, category, message, ...args);
+  }
+  
+  public getLogHistory(): string[] {
+    return [...this.logHistory];
+  }
+  
+  public clearLogHistory(): void {
+    this.logHistory = [];
   }
 }
 
-/**
- * Public API for the logger
- */
-export const logger = {
-  debug: (category: LogCategory, message: string, data?: any) => 
-    logWithFormat(LogLevel.DEBUG, category, message, data),
-  
-  info: (category: LogCategory, message: string, data?: any) => 
-    logWithFormat(LogLevel.INFO, category, message, data),
-  
-  warn: (category: LogCategory, message: string, data?: any) => 
-    logWithFormat(LogLevel.WARN, category, message, data),
-  
-  error: (category: LogCategory, message: string, data?: any) => 
-    logWithFormat(LogLevel.ERROR, category, message, data),
-  
-  // Special method for IoT-related logs
-  iot: (message: string, data?: any) => 
-    logWithFormat(LogLevel.INFO, LogCategory.IOT, message, data),
-  
-  // Configure the logger
-  configure: (newConfig: Partial<LoggerConfig>) => {
-    config = { ...config, ...newConfig };
-  },
-  
-  // Reset to default configuration
-  resetConfig: () => {
-    config = { ...defaultConfig };
-  }
-};
+// Export a singleton instance
+export const logger = Logger.getInstance();
 
+// Default export
 export default logger;

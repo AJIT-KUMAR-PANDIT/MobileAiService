@@ -7,6 +7,7 @@ import { ModelSelector } from "./ModelSelector";
 import { ThemeCustomizer } from "./ThemeCustomizer";
 import { ConversationHistory } from "./ConversationHistory";
 import { OfflineBanner } from "./OfflineBanner";
+import WelcomeGuide from "./WelcomeGuide";
 import { useLLMService } from "@/services/LLMService";
 import { Message, ModelOptions } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
@@ -18,6 +19,8 @@ import { saveConversation, getConversations } from "@/utils/conversationHistory"
 import { useTheme } from "@/contexts/ThemeContext";
 import prompts from "@/data/prompts.json";
 import { prebuiltAppConfig } from "@mlc-ai/web-llm";
+import { isSearchRequest, performOnlineSearch } from "@/services/OnlineSearchService";
+import logger, { LogCategory } from "@/utils/logger";
 
 // Import sound generator utility
 import { generateWakeupSound } from '@/utils/generateWakeupSound';
