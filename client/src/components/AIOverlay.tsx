@@ -93,8 +93,21 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     loadModel,
     isInferring,
     changeModel,
-    modelOptions
+    modelOptions,
+    error: modelError
   } = useLLMService();
+
+  // Add model reload handler
+  useEffect(() => {
+    if (modelError) {
+      console.error("Model error detected:", modelError);
+      const timer = setTimeout(() => {
+        console.log("Attempting to reload model...");
+        loadModel();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [modelError, loadModel]);
   
   const { 
     transcript, 

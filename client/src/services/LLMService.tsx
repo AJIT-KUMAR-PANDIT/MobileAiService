@@ -190,6 +190,11 @@ export const useLLMService = (options = defaultModelOptions) => {
       const { modelId } = modelOptions;
       console.log("Using model ID:", modelId);
       
+      // Add timeout for model loading
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Model loading timeout")), 30000);
+      });
+      
       // Format readable model name from the technical ID
       let readableName = modelId;
       
@@ -234,13 +239,11 @@ export const useLLMService = (options = defaultModelOptions) => {
       setIsDownloading(true);
       setDownloadProgress(0);
       
-      const engine = await CreateMLCEngine(
+      const enginePromise = CreateMLCEngine(
         modelId,
         {
           initProgressCallback: (report: InitProgressReport) => {
             setDownloadProgress(report.progress * 100);
-            // Extract bytes from the text that may contain download information 
-            // like "Downloaded 10/100MB"
             const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
             if (matches && matches.length >= 3) {
               setDownloadSize(matches[1] + matches[3]);
@@ -248,7 +251,10 @@ export const useLLMService = (options = defaultModelOptions) => {
             }
           }
         }
-      ) as unknown as ModelEngine;
+      ) as Promise<ModelEngine>;
+
+      // Race between timeout and model loading
+      const engine = await Promise.race([enginePromise, timeoutPromise]) as ModelEngine;
       
       setModel(engine);
       setIsModelLoaded(true);
