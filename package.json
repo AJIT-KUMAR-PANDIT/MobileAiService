@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/dialog": "^7.0.1",
+    "@capacitor/preferences": "^7.0.1",
     "@hookform/resolvers": "^3.10.0",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@mlc-ai/web-llm": "^0.2.78",

@@ -47,46 +47,218 @@ const DB_VERSION = 1;
 // Initialize IndexedDB
 const initializeDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    // Request persistent storage to increase storage limits
-    if (navigator.storage && navigator.storage.persist) {
-      navigator.storage.persist().then((isPersisted) => {
-        console.log(`Persistent storage granted: ${isPersisted}`);
-      });
-    }
+    // Request persistent storage with user interaction
+    const requestPersistentStorage = async (): Promise<boolean> => {
+      // Check if we're in a Capacitor environment (mobile)
+      const isCapacitor = typeof (window as any).Capacitor !== "undefined";
 
-    // Estimate and request storage if available
-    if (navigator.storage && navigator.storage.estimate) {
-      navigator.storage.estimate().then((estimate) => {
-        const totalBytes = estimate.quota || 0;
-        const usedBytes = estimate.usage || 0;
-        const percentUsed = (usedBytes / totalBytes) * 100;
-        console.log(
-          `Storage usage: ${formatByteSize(usedBytes)} of ${formatByteSize(
-            totalBytes
-          )} (${percentUsed.toFixed(2)}%)`
-        );
-      });
-    }
+      try {
+        if (isCapacitor) {
+          try {
+            // Try to import Capacitor modules
+            const capacitorPreferences = await import(
+              "@capacitor/preferences"
+            ).catch(() => null);
+            const capacitorDialog = await import("@capacitor/dialog").catch(
+              () => null
+            );
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+            // If both modules are available, use them
+            if (capacitorPreferences && capacitorDialog) {
+              const Preferences = capacitorPreferences.Preferences;
+              const Dialog = capacitorDialog.Dialog;
 
-    request.onerror = (event: Event) => {
-      const target = event.target as IDBOpenDBRequest;
-      console.error("Error opening IndexedDB:", target.error);
-      reject(target.error || new Error("Unknown IndexedDB error"));
-    };
+              // Check if we've already asked for permission
+              const { value } = await Preferences.get({
+                key: "storage-permission-asked",
+              });
 
-    request.onsuccess = (event: Event) => {
-      const target = event.target as IDBOpenDBRequest;
-      resolve(target.result);
-    };
+              if (value !== "true") {
+                // Show dialog to request permission
+                const { value: userChoice } = await Dialog.confirm({
+                  title: "Storage Permission",
+                  message:
+                    "Luna AI needs to store data on your device to work offline. Allow Luna to use device storage?",
+                  okButtonTitle: "Allow",
+                  cancelButtonTitle: "Deny",
+                });
 
-    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+                if (userChoice) {
+                  // User granted permission, save this preference
+                  await Preferences.set({
+                    key: "storage-permission-asked",
+                    value: "true",
+                  });
+                  console.log("Storage permission granted by user on mobile");
+                } else {
+                  console.warn("Storage permission denied by user on mobile");
+                }
+              }
+            } else {
+              // Fallback to browser approach if modules aren't available
+              throw new Error("Capacitor modules not available");
+            }
+          } catch (importError) {
+            console.warn(
+              "Capacitor modules not available, using browser fallback:",
+              importError
+            );
+            // Use browser approach as fallback
+            if (navigator.storage && navigator.storage.persist) {
+              const isPersisted = await navigator.storage.persisted();
+              if (!isPersisted) {
+                const granted = await navigator.storage.persist();
+                console.log(
+                  `Persistent storage on mobile (browser fallback): ${granted}`
+                );
+              }
+            }
+          }
+        } else {
+          // For web browsers - improved implementation
+          if (navigator.storage && navigator.storage.persist) {
+            // Check current persistence state
+            let isPersisted = await navigator.storage.persisted();
+            console.log(
+              `Persistent storage status before request: ${isPersisted}`
+            );
+
+            if (!isPersisted) {
+              // First try the permission request API if available
+              if (navigator.permissions) {
+                try {
+                  const permissionStatus = await navigator.permissions.query({
+                    name: "persistent-storage" as PermissionName,
+                  });
+
+                  console.log(
+                    `Storage permission status: ${permissionStatus.state}`
+                  );
+
+                  // If permission is already granted, try to persist
+                  if (permissionStatus.state === "granted") {
+                    isPersisted = await navigator.storage.persist();
+                  }
+                  // Otherwise show the dialog
+                  else {
+                    const userConsent = window.confirm(
+                      "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
+                    );
+
+                    if (userConsent) {
+                      isPersisted = await navigator.storage.persist();
+                    }
+                  }
+                } catch (permError) {
+                  console.warn("Permission API error:", permError);
+                  // Fallback to direct persist request
+                  const userConsent = window.confirm(
+                    "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
+                  );
+
+                  if (userConsent) {
+                    isPersisted = await navigator.storage.persist();
+                  }
+                }
+              } else {
+                // Direct persist request if permissions API not available
+                const userConsent = window.confirm(
+                  "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
+                );
+
+                if (userConsent) {
+                  isPersisted = await navigator.storage.persist();
+                }
+              }
+
+              console.log(
+                `Persistent storage after user consent: ${isPersisted}`
+              );
+            }
+
+            return isPersisted;
+          }
+        }
+
+        return false;
+      } catch (error) {
+        console.error("Error requesting persistent storage:", error);
+        return false;
       }
     };
+
+    // 定义重试变量
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    const attemptOpenDB = () => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onerror = (event: Event) => {
+        const target = event.target as IDBOpenDBRequest;
+        console.error("Error opening IndexedDB:", target.error);
+
+        if (retryCount < maxRetries) {
+          retryCount++;
+          console.log(
+            `Retrying IndexedDB open (${retryCount}/${maxRetries})...`
+          );
+          setTimeout(attemptOpenDB, 1000);
+        } else {
+          reject(target.error || new Error("Unknown IndexedDB error"));
+        }
+      };
+
+      request.onsuccess = (event: Event) => {
+        const target = event.target as IDBOpenDBRequest;
+        console.log("IndexedDB opened successfully");
+        resolve(target.result);
+      };
+
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "id" });
+          console.log(`Created object store: ${STORE_NAME}`);
+        }
+      };
+    };
+
+    // 请求持久化存储并打开数据库
+    requestPersistentStorage()
+      .then((isPersisted) => {
+        console.log(`Final persistence status before DB open: ${isPersisted}`);
+
+        // Estimate and request storage if available
+        if (navigator.storage && navigator.storage.estimate) {
+          navigator.storage.estimate().then((estimate) => {
+            const totalBytes = estimate.quota || 0;
+            const usedBytes = estimate.usage || 0;
+            const percentUsed = (usedBytes / totalBytes) * 100;
+            console.log(
+              `Storage usage: ${formatByteSize(usedBytes)} of ${formatByteSize(
+                totalBytes
+              )} (${percentUsed.toFixed(2)}%)`
+            );
+
+            // If we're using more than 80% of storage, try to clear old caches
+            if (percentUsed > 80) {
+              console.warn(
+                "Storage usage is high. Attempting to clear old caches..."
+              );
+              clearOldCaches();
+            }
+          });
+        }
+
+        // Start the DB open process
+        attemptOpenDB();
+      })
+      .catch((error) => {
+        console.error("Error in persistence request:", error);
+        // 即使持久化失败，也尝试打开数据库
+        attemptOpenDB();
+      });
   });
 };
 
@@ -182,7 +354,7 @@ const formatByteSize = (bytes: number): string => {
   else return (bytes / 1073741824).toFixed(2) + " GB";
 };
 
-// Type for the model engine
+// Type for the model engine - update to include getModelId
 interface ModelEngine {
   chat: (params: {
     messages: ChatMessage[];
@@ -192,6 +364,7 @@ interface ModelEngine {
   }) => Promise<ChatCompletionChunk>;
   save: () => Promise<any>;
   close?: () => void;
+  getModelId?: () => Promise<string>;
 }
 
 // Main hook for LLM service
@@ -202,7 +375,7 @@ export const useLLMService = (options = defaultModelOptions) => {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadSize, setDownloadSize] = useState<string>("0 MB");
-  const [totalSize, setTotalSize] = useState<string>("1.0 GB");
+  const [totalSize, setTotalSize] = useState<string>("3.0 GB");
   const [modelName, setModelName] = useState<string>("");
   const [isInferring, setIsInferring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,9 +391,9 @@ export const useLLMService = (options = defaultModelOptions) => {
       const { modelId } = modelOptions;
       console.log("Using model ID:", modelId);
 
-      // Add timeout for model loading
+      // Add timeout for model loading with a longer duration
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Model loading timeout")), 30000);
+        setTimeout(() => reject(new Error("Model loading timeout")), 120000); // Increased to 2 minutes
       });
 
       // Format readable model name from the technical ID
@@ -244,44 +417,108 @@ export const useLLMService = (options = defaultModelOptions) => {
 
       // Check if model exists in IndexedDB
       const modelExists = await checkModelExists(modelId);
+      console.log(`Model ${modelId} exists in IndexedDB: ${modelExists}`);
 
-      if (modelExists) {
-        console.log(`Model ${modelId} found in IndexedDB cache`);
-        // Model exists, load from IndexedDB
-        const cachedModel = await loadModelFromIndexedDB(modelId);
-        if (cachedModel) {
-          // Initialize WebLLM with cached model
-          const engine = (await CreateMLCEngine(modelId, {
-            initProgressCallback: (report: InitProgressReport) => {
-              console.log("Loading model progress:", report.progress);
-            },
-          })) as unknown as ModelEngine;
-          setModel(engine);
-          setIsModelLoaded(true);
-          return engine;
+      // Check if model is already loaded in memory
+      if (model && isModelLoaded) {
+        // If the current loaded model is the same as requested, reuse it
+        const currentModelId = (await model.getModelId?.()) || "";
+        if (currentModelId === modelId) {
+          console.log(`Model ${modelId} already loaded in memory, reusing it`);
+          return model;
+        } else {
+          // Different model requested, close the current one
+          console.log(
+            `Closing current model to load a different one: ${modelId}`
+          );
+          await model.close?.();
         }
       }
 
-      // Model not in cache, download it
+      // In the loadModel function, update the CreateMLCEngine call
+      if (modelExists) {
+        console.log(
+          `Model ${modelId} found in IndexedDB cache, loading from cache`
+        );
+        try {
+          // Model exists, load from IndexedDB
+          const cachedModel = await loadModelFromIndexedDB(modelId);
+          if (cachedModel) {
+            // Initialize WebLLM with cached model
+            console.log("Initializing engine with cached model data");
+            const engine = (await CreateMLCEngine(modelId, {
+              // Remove useIndexedDB property and use the correct config options
+              initProgressCallback: (report: InitProgressReport) => {
+                console.log("Loading cached model progress:", report.progress);
+              },
+            })) as unknown as ModelEngine;
+
+            // Add a getModelId method if it doesn't exist
+            if (!engine.getModelId) {
+              engine.getModelId = () => Promise.resolve(modelId);
+            }
+
+            setModel(engine);
+            setIsModelLoaded(true);
+            return engine;
+          } else {
+            console.warn(
+              "Model exists in IndexedDB but data couldn't be loaded, will download fresh"
+            );
+          }
+        } catch (cacheError) {
+          console.error("Error loading model from cache:", cacheError);
+          console.log("Will attempt to download fresh model");
+        }
+      }
+
+      // Model not in cache or cache loading failed, download it
       setIsDownloading(true);
       setDownloadProgress(0);
 
-      const enginePromise = CreateMLCEngine(modelId, {
-        initProgressCallback: (report: InitProgressReport) => {
-          setDownloadProgress(report.progress * 100);
-          const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
-          if (matches && matches.length >= 3) {
-            setDownloadSize(matches[1] + matches[3]);
-            setTotalSize(matches[2] + matches[3]);
-          }
-        },
-      }) as unknown as Promise<ModelEngine>;
+      // Add retry mechanism for model loading
+      let retryCount = 0;
+      const maxRetries = 2;
+      let engine = null;
 
-      // Race between timeout and model loading
-      const engine = (await Promise.race([
-        enginePromise,
-        timeoutPromise,
-      ])) as ModelEngine;
+      while (retryCount <= maxRetries && !engine) {
+        try {
+          console.log(`Attempt ${retryCount + 1} to load model ${modelId}`);
+
+          const enginePromise = CreateMLCEngine(modelId, {
+            initProgressCallback: (report: InitProgressReport) => {
+              setDownloadProgress(report.progress * 100);
+              const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
+              if (matches && matches.length >= 3) {
+                setDownloadSize(matches[1] + matches[3]);
+                setTotalSize(matches[2] + matches[3]);
+              }
+            },
+          }) as unknown as Promise<ModelEngine>;
+
+          // Race between timeout and model loading
+          engine = (await Promise.race([
+            enginePromise,
+            timeoutPromise,
+          ])) as ModelEngine;
+
+          break; // If successful, exit the retry loop
+        } catch (loadError) {
+          retryCount++;
+          console.error(`Attempt ${retryCount} failed:`, loadError);
+
+          if (retryCount <= maxRetries) {
+            console.log(`Retrying in 3 seconds...`);
+            await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
+          } else {
+            throw loadError; // Re-throw if all retries failed
+          }
+        }
+      }
+
+      if (!engine) {
+        throw new Error("Failed to load model after multiple attempts");
+      }
 
       setModel(engine);
       setIsModelLoaded(true);
@@ -442,4 +679,48 @@ export const useLLMService = (options = defaultModelOptions) => {
     inference,
     modelOptions,
   };
+};
+
+// Clear old caches to free up space
+const clearOldCaches = async (): Promise<void> => {
+  try {
+    // Clear old service worker caches if available
+    if ("caches" in window) {
+      const cacheNames = await window.caches.keys();
+      const oldCachePromises = cacheNames.map((cacheName) => {
+        // Keep only the current cache version
+        if (cacheName !== "webllm-v1") {
+          return window.caches.delete(cacheName);
+        }
+        return Promise.resolve(false);
+      });
+
+      await Promise.all(oldCachePromises);
+      console.log("Old caches cleared");
+    }
+
+    // Clear old IndexedDB data (models older than 30 days)
+    const db = await initializeDB();
+    const transaction = db.transaction([STORE_NAME], "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.openCursor();
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest).result;
+      if (cursor) {
+        const record = cursor.value;
+        if (record.timestamp && record.timestamp < thirtyDaysAgo) {
+          console.log(`Removing old model: ${record.id}`);
+          cursor.delete();
+        }
+        cursor.continue();
+      }
+    };
+
+    console.log("Checked for old model data to clear");
+  } catch (error) {
+    console.error("Error clearing caches:", error);
+  }
 };
