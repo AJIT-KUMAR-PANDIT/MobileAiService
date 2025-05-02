@@ -638,8 +638,72 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         return;
       }
       
+      // Check if this is an online search request and we have internet
+      if (isSearchRequest(message) && !isOffline) {
+        logger.info(LogCategory.SEARCH, `Detected search request: "${message}"`);
+        
+        try {
+          // Show a processing message
+          setChatMessages(prev => [...prev, { 
+            role: "assistant", 
+            content: "Searching online for the most current information..." 
+          }]);
+          
+          // Perform the online search
+          const searchResult = await performOnlineSearch({
+            query: message,
+            isOnline: !isOffline,
+            systemPrompt: "You are a helpful assistant providing accurate and current information from online sources. Be helpful, concise, and informative."
+          });
+          
+          // Create the assistant response with attribution
+          const searchResponse = searchResult.result + 
+            (searchResult.source === 'online' ? 
+              "\n\n*Information retrieved from online sources.*" : 
+              "\n\n*Answering from my knowledge base as online search couldn't be completed.*");
+          
+          // Update chat with search results (replace the temporary message)
+          setChatMessages(prev => {
+            const newMessages = [...prev];
+            // Remove the last message (which was the temporary one)
+            newMessages.pop();
+            // Add the new message with search results
+            return [...newMessages, { role: "assistant", content: searchResponse }];
+          });
+          
+          // Save conversation with the search response
+          const searchConversation = [...chatMessages, userMessage, { 
+            role: "assistant", 
+            content: searchResponse 
+          }];
+          
+          if (searchConversation.length > 3) {
+            saveConversation(searchConversation, modelOptions.modelId);
+          }
+          
+          return;
+        } catch (error) {
+          logger.error(LogCategory.SEARCH, 'Error during online search:', error);
+          // Remove the temporary message
+          setChatMessages(prev => {
+            const newMessages = [...prev];
+            // Remove the last message if it was our temporary one
+            if (newMessages.length > 0 && 
+                newMessages[newMessages.length-1].role === "assistant" && 
+                newMessages[newMessages.length-1].content === "Searching online for the most current information...") {
+              newMessages.pop();
+            }
+            return newMessages;
+          });
+          // Continue with regular inference if search fails
+        }
+      }
+      
       // For general queries, use the LLM
-      const systemPrompt = prompts.template;
+      const systemPrompt = isNormalChatMode 
+        ? prompts.normalConversationPrompt // Use regular conversation prompt
+        : prompts.deviceControlPrompt;  // Use device control prompt by default
+      
       const messages = [...chatMessages, userMessage];
       
       // Send to LLM for inference
