@@ -42,6 +42,8 @@ interface SearchOptions {
  * @param options Search options including query, online status, and optional params
  * @returns Search results or error message
  */
+import { isOnlineSearchAvailable } from '../config/internetConfig';
+
 export async function performOnlineSearch(options: SearchOptions): Promise<{ 
   result: string; 
   isOnline: boolean;
@@ -52,8 +54,8 @@ export async function performOnlineSearch(options: SearchOptions): Promise<{
   
   logger.info(LogCategory.SEARCH, `Online search request: "${query}"`);
   
-  // If offline, return a message explaining that online search isn't available
-  if (!isOnline) {
+  // Check if online search is enabled and available
+  if (!isOnlineSearchAvailable()) {
     logger.info(LogCategory.SEARCH, 'Online search requested but device is offline');
     return {
       result: "I can't perform an online search right now because you're offline. I'll answer based on my knowledge, but it may not include the most current information.",
