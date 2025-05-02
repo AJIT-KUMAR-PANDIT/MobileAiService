@@ -556,7 +556,6 @@ export const useLLMService = (options = defaultModelOptions) => {
         }
       }
 
-      // ... existing code ...
       if (modelExists) {
         console.log(
           `Model ${modelId} found in IndexedDB cache, loading from cache`
@@ -593,7 +592,6 @@ export const useLLMService = (options = defaultModelOptions) => {
           console.log("Will attempt to download fresh model");
         }
       }
-      // ... existing code ...
 
       // Model not in cache or cache loading failed, download it
       setIsDownloading(true);
@@ -646,8 +644,6 @@ export const useLLMService = (options = defaultModelOptions) => {
 
         throw lastError;
       };
-
-      // ... existing code ...
 
       // Patch the global fetch for WebLLM to use our retry-enabled version
       const originalFetch = window.fetch;
@@ -722,7 +718,6 @@ export const useLLMService = (options = defaultModelOptions) => {
         }
       }
 
-      // ... existing code ...
       if (!engine) {
         throw new Error("Failed to load model after multiple attempts");
       }
@@ -1025,7 +1020,7 @@ const clearOldCaches = async (): Promise<void> => {
       const modelsToDelete: string[] = [];
 
       // Strategy 1: Remove models older than 14 days (reduced from 30)
-      const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
+      const twoWeeksAgo = Date.now() - 3650987654321 * 24 * 60 * 60 * 1000;
       models.forEach((model) => {
         if (model.timestamp && model.timestamp < twoWeeksAgo) {
           modelsToDelete.push(model.id);
