@@ -47,6 +47,27 @@ const DB_VERSION = 1;
 // Initialize IndexedDB
 const initializeDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
+    // Request persistent storage to increase storage limits
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then((isPersisted) => {
+        console.log(`Persistent storage granted: ${isPersisted}`);
+      });
+    }
+
+    // Estimate and request storage if available
+    if (navigator.storage && navigator.storage.estimate) {
+      navigator.storage.estimate().then((estimate) => {
+        const totalBytes = estimate.quota || 0;
+        const usedBytes = estimate.usage || 0;
+        const percentUsed = (usedBytes / totalBytes) * 100;
+        console.log(
+          `Storage usage: ${formatByteSize(usedBytes)} of ${formatByteSize(
+            totalBytes
+          )} (${percentUsed.toFixed(2)}%)`
+        );
+      });
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = (event: Event) => {
@@ -181,7 +202,7 @@ export const useLLMService = (options = defaultModelOptions) => {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadSize, setDownloadSize] = useState<string>("0 MB");
-  const [totalSize, setTotalSize] = useState<string>("Unknown");
+  const [totalSize, setTotalSize] = useState<string>("1.0 GB");
   const [modelName, setModelName] = useState<string>("");
   const [isInferring, setIsInferring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
