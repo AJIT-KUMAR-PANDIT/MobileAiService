@@ -254,7 +254,7 @@ export const useLLMService = (options = defaultModelOptions) => {
             setTotalSize(matches[2] + matches[3]);
           }
         },
-      }) as Promise<ModelEngine>;
+      }) as unknown as Promise<ModelEngine>;
 
       // Race between timeout and model loading
       const engine = (await Promise.race([
