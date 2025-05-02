@@ -25,15 +25,15 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Qwen1.5-0.5B-Chat",
+  modelId: "Qwen2.5-0.5B-Instruct-q0f32-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
 };
 
-// Fallback model config (even smaller)
+// Fallback model config (same as default for reliability)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC", // 修改为可用的模型
+  modelId: "Qwen2.5-0.5B-Instruct-q0f32-MLC", // Using same model as fallback
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
@@ -207,7 +207,7 @@ export const useLLMService = (options = defaultModelOptions) => {
 
       // Handle different model ID patterns
       if (modelId.includes("Qwen")) {
-        readableName = "Qwen 1.5";
+        readableName = "Luna (qwen 2.5)";
       } else if (modelId.includes("TinyLlama")) {
         readableName = "TinyLlama";
       } else if (modelId.includes("Phi")) {
