@@ -46,6 +46,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   const [showHistorySidebar, setShowHistorySidebar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [activeTimer, setActiveTimer] = useState<{ id: string; endTime: number; display: string } | null>(null);
+  const [isNormalChatMode, setIsNormalChatMode] = useState(false);
   
   // Use our custom offline status hook
   const { isOffline } = useOfflineStatus();
@@ -257,7 +258,45 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       // Check if this is a special command
       const commandResult = await processVoiceCommand(text);
       
-      if (commandResult.success && commandResult.type !== CommandType.GENERAL) {
+      // Handle normal chat mode
+      if (commandResult.type === CommandType.NORMAL_CHAT) {
+        // Update normal chat mode state
+        setIsNormalChatMode(true);
+        
+        // If command has a message (welcome/instruction), use it directly
+        if (commandResult.message) {
+          const assistantMessage: Message = { 
+            role: "assistant", 
+            content: commandResult.message
+          };
+          
+          // Update chat and UI with special command response
+          if (mode === "chat") {
+            setChatMessages(prev => [...prev, assistantMessage]);
+            setIsTyping(false);
+          } else {
+            setAIResponse(commandResult.message);
+            setInstruction("Normal chat mode active. Tap to speak again.");
+            speak(commandResult.message);
+          }
+          
+          return;
+        }
+        
+        // If they had a follow-up question with the normal chat request,
+        // extract it and continue to LLM processing with the cleaned text
+        if (commandResult.data?.processedText) {
+          text = commandResult.data.processedText;
+          console.log("Normal chat mode with question:", text);
+        }
+      } 
+      // Exit normal chat mode if they're using a specific command
+      else if (isNormalChatMode && commandResult.type !== CommandType.GENERAL) {
+        console.log("Exiting normal chat mode due to specific command");
+        setIsNormalChatMode(false);
+      }
+      
+      if (commandResult.success && commandResult.type !== CommandType.GENERAL && commandResult.type !== CommandType.NORMAL_CHAT) {
         // Handle special commands
         const specialResponse = commandResult.message;
         

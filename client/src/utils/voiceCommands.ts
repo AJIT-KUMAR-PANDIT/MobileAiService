@@ -15,7 +15,8 @@ export enum CommandType {
   TIME = 'time',
   TIMER = 'timer',
   REMINDER = 'reminder',
-  GENERAL = 'general'
+  GENERAL = 'general',
+  NORMAL_CHAT = 'normal_chat' // Added new command type for normal conversation mode
 }
 
 // Result structure for voice command processing
@@ -34,6 +35,22 @@ export interface CommandResult {
  */
 export function identifyCommandType(command: string): CommandType {
   const lowerCommand = command.toLowerCase();
+  
+  // Normal chat mode - user explicitly wants to just talk without triggering device controls
+  if (lowerCommand.includes('just chat') || 
+      lowerCommand.includes('just talk') || 
+      lowerCommand.includes('normal chat') || 
+      lowerCommand.includes('normal talk') ||
+      lowerCommand.includes('have a conversation') ||
+      lowerCommand.includes("let's talk") ||
+      lowerCommand.includes("let's chat") ||
+      lowerCommand.includes('no device control') ||
+      lowerCommand.includes('don\'t control') ||
+      lowerCommand.includes('without controlling') ||
+      (lowerCommand.includes('chat') && lowerCommand.includes('mode')) ||
+      (lowerCommand.includes('conversation') && lowerCommand.includes('mode'))) {
+    return CommandType.NORMAL_CHAT;
+  }
   
   // Smart home device control
   if (isSmartHomeCommand(command)) {
@@ -207,6 +224,65 @@ function processReminderCommand(command: string): CommandResult {
 }
 
 /**
+ * Extracts the actual message content from a "normal chat" command
+ * by removing phrases like "let's just chat" or "normal conversation mode"
+ * 
+ * @param command The original command with the normal chat directive
+ * @returns The cleaned message without the directive
+ */
+function getCleanedChatText(command: string): string {
+  const lowerCommand = command.toLowerCase();
+  
+  // Phrases that indicate normal chat mode - we'll remove these
+  const phrasesToRemove = [
+    'just chat',
+    'just talk',
+    'normal chat',
+    'normal talk',
+    'have a conversation',
+    "let's talk",
+    "let's chat",
+    'no device control',
+    "don't control",
+    'without controlling',
+    'chat mode',
+    'conversation mode'
+  ];
+  
+  let cleanedText = command;
+  
+  // Replace each phrase with an empty string
+  for (const phrase of phrasesToRemove) {
+    // Case insensitive replacement
+    const regex = new RegExp(phrase, 'i');
+    cleanedText = cleanedText.replace(regex, '');
+  }
+  
+  // Remove common connecting words that might be left over
+  const connectorsToRemove = [
+    'please', 'can you', 'i want to', 'i would like to',
+    'i want', 'let\'s', 'with you', 'about',
+    'and', 'but', 'or', 'so', 'could you'
+  ];
+  
+  for (const connector of connectorsToRemove) {
+    const regex = new RegExp(`^${connector}\\s+|\\s+${connector}\\s+|\\s+${connector}$`, 'i');
+    cleanedText = cleanedText.replace(regex, ' ');
+  }
+  
+  // Remove multiple spaces and trim
+  cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+  
+  // If after all this processing we just have a very short command left (likely just filler words)
+  // return empty string to trigger the welcome message
+  if (cleanedText.split(' ').length <= 2 && cleanedText.length < 10) {
+    return '';
+  }
+  
+  return cleanedText;
+}
+
+/**
  * Process a voice command and route to the appropriate handler
  * @param command User's voice command text
  * @returns Result of processing the command
@@ -259,6 +335,35 @@ export async function processVoiceCommand(command: string): Promise<CommandResul
       case CommandType.REMINDER:
         // Process reminder command
         return processReminderCommand(command);
+      
+      case CommandType.NORMAL_CHAT:
+        // Normal conversation mode - user wants to chat without device control
+        // Log that we're entering normal conversation mode
+        console.log("Entering normal conversation mode - no device control");
+        
+        // We'll extract what they want to chat about (removing the directive about normal chat)
+        const chatText = getCleanedChatText(command);
+        
+        // If they just asked to chat normally without specific topic, welcome them to chat mode
+        if (!chatText.trim()) {
+          return {
+            type: CommandType.NORMAL_CHAT,
+            success: true,
+            message: "I'm in normal conversation mode now. We can just chat without triggering any smart home controls. What would you like to talk about?",
+          };
+        }
+        
+        // Otherwise return their actual question for processing by the LLM
+        return {
+          type: CommandType.NORMAL_CHAT,
+          success: true,
+          message: "", // Empty message signals to use the AI model for the response
+          data: {
+            normalChatMode: true,
+            originalText: command,
+            processedText: chatText
+          }
+        };
         
       case CommandType.GENERAL:
       default:
