@@ -631,8 +631,71 @@ export const useLLMService = (options = defaultModelOptions) => {
 
       // Add retry mechanism for model loading
       let retryCount = 0;
-      const maxRetries = 2;
+      const maxRetries = 3; // Increased from 2 to 3
       let engine = null;
+
+      // Custom fetch with retry for parameter shards
+      const fetchWithRetry = async (
+        url: string,
+        options: RequestInit = {},
+        maxAttempts = 5
+      ) => {
+        let lastError;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            console.log(`Fetching ${url} - attempt ${attempt}/${maxAttempts}`);
+            const response = await fetch(url, {
+              ...options,
+              // Add cache busting for retry attempts after the first
+              cache: attempt > 1 ? "no-cache" : "default",
+              // Increase timeout for larger files
+              signal: AbortSignal.timeout(60000), // 60 second timeout
+            });
+
+            if (!response.ok) {
+              throw new Error(
+                `HTTP error ${response.status}: ${response.statusText}`
+              );
+            }
+
+            return response;
+          } catch (error) {
+            lastError = error;
+            console.warn(`Fetch attempt ${attempt} failed for ${url}:`, error);
+
+            // Only wait between retries, not after the last attempt
+            if (attempt < maxAttempts) {
+              // Exponential backoff: 1s, 2s, 4s, 8s...
+              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+              console.log(`Retrying in ${delay / 1000}s...`);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        throw lastError;
+      };
+
+      // Patch the global fetch for WebLLM to use our retry-enabled version
+      const originalFetch = window.fetch;
+      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+        // Check if this is a model parameter shard request
+        if (url.includes("params_shard") || url.includes(".bin")) {
+          console.log(`Intercepting parameter shard request: ${url}`);
+          return fetchWithRetry(url, init, 5);
+        }
+
+        // Use original fetch for other requests
+        return originalFetch(input, init);
+      };
 
       while (retryCount <= maxRetries && !engine) {
         try {
@@ -666,6 +729,9 @@ export const useLLMService = (options = defaultModelOptions) => {
           } else {
             throw loadError; // Re-throw if all retries failed
           }
+        } finally {
+          // Restore original fetch after model loading attempt
+          window.fetch = originalFetch;
         }
       }
 
