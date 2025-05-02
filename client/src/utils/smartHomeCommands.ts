@@ -3,9 +3,11 @@
  * 
  * This utility file processes natural language commands related to smart home control
  * and translates them into API calls to the IoT system.
+ * It works in both web browser and Capacitor mobile environments.
  */
 
-import { controlSmartHomeDevice, checkIoTSystemStatus } from '@/config/iotDomainConfig';
+import { controlSmartHomeDevice, checkIoTSystemStatus, isCapacitorApp } from '@/config/iotDomainConfig';
+import logger, { LogCategory } from './logger';
 
 // Define structure for command processing result
 export interface SmartHomeCommandResult {
@@ -192,8 +194,21 @@ export async function processSmartHomeCommand(command: string): Promise<SmartHom
     };
   }
   
-  // Log the processed command
-  console.log(`Smart home command processed: ${action} ${device} in ${room}${value !== null ? ` to ${value}` : ''}`);
+  // Log the processed command with enhanced visibility
+  logger.iot(`Smart home command: ${action} ${device} in ${room}${value !== null ? ` to ${value}` : ''}`);
+  
+  // Add platform-specific logging
+  if (isCapacitorApp()) {
+    // Log specially for mobile apps to make IoT requests very visible in native logs
+    console.log(`[MOBILE-IOT] Smart home command to nakprciotsystemslabs.local: ${action} ${device} in ${room}`);
+  } else {
+    // Enhanced web console logging 
+    console.log(
+      `%c [IOT REQUEST to nakprciotsystemslabs.local] %c ${action} ${device} in ${room}${value !== null ? ` to ${value}` : ''}`,
+      'background: #ff5722; color: white; padding: 3px 6px; border-radius: 3px; font-weight: bold;', 
+      'color: #ff5722; font-weight: bold;'
+    );
+  }
   
   try {
     // Special handling for "set" actions that require a value
@@ -237,6 +252,20 @@ export async function processSmartHomeCommand(command: string): Promise<SmartHom
       successMessage = `I've ${action}ed the ${device} in the ${room}.`;
     }
     
+    // Log successful IoT command completion
+    logger.info(LogCategory.IOT, `Successfully executed command: ${action} ${device} in ${room}`, response);
+    
+    // Platform-specific success logging
+    if (isCapacitorApp()) {
+      console.log(`[MOBILE-IOT-SUCCESS] Successful request to nakprciotsystemslabs.local: ${action} ${device} in ${room}`);
+    } else {
+      console.log(
+        `%c [IOT SUCCESS from nakprciotsystemslabs.local] %c ${action} ${device} in ${room}`,
+        'background: #4caf50; color: white; padding: 3px 6px; border-radius: 3px; font-weight: bold;', 
+        'color: #4caf50; font-weight: bold;'
+      );
+    }
+    
     return {
       success: true,
       message: isOnline ? successMessage : `${successMessage} (Note: Running in offline mode)`,
@@ -244,10 +273,23 @@ export async function processSmartHomeCommand(command: string): Promise<SmartHom
     };
     
   } catch (error) {
-    console.error('Smart home command execution failed:', error);
+    // Enhanced error logging
+    logger.error(LogCategory.IOT, `Smart home command failed: ${action} ${device} in ${room}`, error);
+    
+    // Additional platform-specific error logging for better visibility
+    if (isCapacitorApp()) {
+      console.error(`[MOBILE-IOT-ERROR] Failed request to nakprciotsystemslabs.local: ${action} ${device} in ${room}`);
+    } else {
+      console.error(
+        `%c [IOT ERROR to nakprciotsystemslabs.local] %c ${action} ${device} in ${room}`,
+        'background: #d9534f; color: white; padding: 3px 6px; border-radius: 3px; font-weight: bold;', 
+        'color: #d9534f; font-weight: bold;'
+      );
+    }
     
     // Offline fallback response
     if (!isOnline) {
+      logger.info(LogCategory.IOT, `Using offline fallback for command: ${action} ${device} in ${room}`);
       return {
         success: true,
         message: `I'll ${action} the ${device} in the ${room} when the system is back online.`,

@@ -110,32 +110,110 @@ export function getApiUrl(endpoint: string): string {
 }
 
 /**
- * Logs API requests when debug mode is enabled
+ * Creates a consistent style for console logging based on the environment
+ * @returns Styling object with color and size information
+ */
+function getConsoleStyle(): { color: string, background: string, device: string } {
+  // Different styling for mobile and web for better visibility
+  if (isCapacitorApp()) {
+    return {
+      color: '#ffffff',
+      background: '#8a2be2', // Capacitor - purple background
+      device: 'MOBILE'
+    };
+  } else {
+    return {
+      color: '#ffffff',
+      background: '#2e8b57', // Web - green background
+      device: 'WEB'
+    };
+  }
+}
+
+/**
+ * Logs API requests when debug mode is enabled with detailed formatting
  * @param method HTTP method (GET, POST, etc.)
  * @param url The API URL being called
  * @param data Optional request data for POST/PUT requests
  */
 export function logApiRequest(method: string, url: string, data?: any): void {
   if (DEBUG_API_REQUESTS) {
-    console.log(`🔌 IOT API Request: ${method} ${url}`);
+    const style = getConsoleStyle();
+    const timestamp = new Date().toISOString();
+    
+    // Always log to console with high visibility
+    console.log(
+      `%c [${style.device}] [${timestamp}] 📡 IOT REQUEST: ${method} ${url} %c`,
+      `background: ${style.background}; color: ${style.color}; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
+      'background: transparent;'
+    );
+    
+    // Log detailed data if available
     if (data) {
-      console.log('Request Data:', data);
+      console.log(
+        '%c [REQUEST PAYLOAD] %c',
+        `background: #555; color: #fff; padding: 2px 4px; border-radius: 2px;`,
+        'background: transparent;',
+        data
+      );
+    }
+    
+    // Special case for IoT domain
+    if (url.includes('nakprciotsystemslabs.local')) {
+      console.log(
+        '%c [IOT SYSTEMS API CALL] %c',
+        'background: #ff5722; color: white; padding: 2px 4px; border-radius: 2px;',
+        'background: transparent;',
+        `Target: iotsystemslabs.local`
+      );
     }
   }
 }
 
 /**
- * Logs API responses when debug mode is enabled
+ * Logs API responses when debug mode is enabled with detailed formatting
  * @param url The API URL that was called
  * @param response The response data
  * @param error Optional error information if the request failed
  */
 export function logApiResponse(url: string, response?: any, error?: any): void {
   if (DEBUG_API_REQUESTS) {
+    const style = getConsoleStyle();
+    const timestamp = new Date().toISOString();
+    
     if (error) {
-      console.error(`🔌 IOT API Error for ${url}:`, error);
+      // Log errors with red styling
+      console.error(
+        `%c [${style.device}] [${timestamp}] ❌ IOT ERROR: ${url} %c`,
+        `background: #d9534f; color: white; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
+        'background: transparent;',
+        error
+      );
     } else {
-      console.log(`🔌 IOT API Response for ${url}:`, response);
+      // Log successful responses with custom styling
+      console.log(
+        `%c [${style.device}] [${timestamp}] ✅ IOT RESPONSE: ${url} %c`,
+        `background: ${style.background}; color: ${style.color}; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
+        'background: transparent;'
+      );
+      
+      // Log detailed response data
+      console.log(
+        '%c [RESPONSE DATA] %c',
+        `background: #555; color: #fff; padding: 2px 4px; border-radius: 2px;`,
+        'background: transparent;',
+        response
+      );
+      
+      // Special case for IoT domain
+      if (url.includes('nakprciotsystemslabs.local')) {
+        console.log(
+          '%c [IOT SYSTEMS RESPONSE] %c',
+          'background: #4caf50; color: white; padding: 2px 4px; border-radius: 2px;',
+          'background: transparent;',
+          `Source: iotsystemslabs.local`
+        );
+      }
     }
   }
 }
