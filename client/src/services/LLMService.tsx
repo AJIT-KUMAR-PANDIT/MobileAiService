@@ -645,8 +645,12 @@ export const useLLMService = (options = defaultModelOptions) => {
         throw lastError;
       };
 
+      // ... existing code ...
+
       // Patch the global fetch for WebLLM to use our retry-enabled version
       const originalFetch = window.fetch;
+      const fetchController = new AbortController();
+
       window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const url =
           typeof input === "string"
@@ -658,7 +662,15 @@ export const useLLMService = (options = defaultModelOptions) => {
         // Check if this is a model parameter shard request
         if (url.includes("params_shard") || url.includes(".bin")) {
           console.log(`Intercepting parameter shard request: ${url}`);
-          return fetchWithRetry(url, init, 5);
+          return fetchWithRetry(
+            url,
+            {
+              ...init,
+              signal: fetchController.signal, // Connect to abort controller
+              keepalive: true, // Ensure persistent connections
+            },
+            5
+          );
         }
 
         // Use original fetch for other requests
@@ -671,12 +683,15 @@ export const useLLMService = (options = defaultModelOptions) => {
 
           const enginePromise = CreateMLCEngine(modelId, {
             initProgressCallback: (report: InitProgressReport) => {
-              setDownloadProgress(report.progress * 100);
-              const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
-              if (matches && matches.length >= 3) {
-                setDownloadSize(matches[1] + matches[3]);
-                setTotalSize(matches[2] + matches[3]);
-              }
+              // Ensure DOM synchronization for progress updates
+              requestAnimationFrame(() => {
+                setDownloadProgress(report.progress * 100);
+                const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
+                if (matches && matches.length >= 3) {
+                  setDownloadSize(matches[1] + matches[3]);
+                  setTotalSize(matches[2] + matches[3]);
+                }
+              });
             },
           }) as unknown as Promise<ModelEngine>;
 
@@ -686,23 +701,26 @@ export const useLLMService = (options = defaultModelOptions) => {
             timeoutPromise,
           ])) as ModelEngine;
 
-          break; // If successful, exit the retry loop
+          break;
         } catch (loadError) {
           retryCount++;
           console.error(`Attempt ${retryCount} failed:`, loadError);
 
           if (retryCount <= maxRetries) {
             console.log(`Retrying in 3 seconds...`);
-            await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
+            await new Promise((resolve) => setTimeout(resolve, 3000));
           } else {
-            throw loadError; // Re-throw if all retries failed
+            fetchController.abort(); // Cancel pending requests
+            throw loadError;
           }
         } finally {
-          // Restore original fetch after model loading attempt
+          // Restore original fetch and clean up
           window.fetch = originalFetch;
+          fetchController.abort();
         }
       }
 
+      // ... existing code ...
       if (!engine) {
         throw new Error("Failed to load model after multiple attempts");
       }
