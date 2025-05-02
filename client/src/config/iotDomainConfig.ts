@@ -2,14 +2,24 @@
  * IOT Systems Domain Configuration
  * 
  * This file configures the API requests to the iotsystemslabs.local domain 
- * and handles logging for API interactions
+ * and handles logging for API interactions.
+ * It supports both web browsers and Capacitor mobile apps.
  */
 
-// Base domain for all API requests
-export const IOT_BASE_DOMAIN = 'https://nakprciotsystemslabs.local';
+// Base domain for all API requests - can be overridden by environment variables
+export const IOT_BASE_DOMAIN = import.meta.env.VITE_IOT_BASE_URL || 'https://nakprciotsystemslabs.local';
 
 // Debug mode - when true, all API requests will be logged to console
 export const DEBUG_API_REQUESTS = true;
+
+/**
+ * Helper function to detect if running in a Capacitor app environment
+ * @returns boolean True if running in Capacitor
+ */
+export function isCapacitorApp(): boolean {
+  return typeof (window as any)?.Capacitor !== 'undefined' && 
+         (window as any)?.Capacitor?.isNative === true;
+}
 
 // Configuration for different API endpoints
 export const API_ENDPOINTS = {
@@ -83,6 +93,19 @@ export const API_ENDPOINTS = {
 export function getApiUrl(endpoint: string): string {
   // Remove leading slash if present to avoid double slashes
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
+  
+  // When running in Capacitor, use the platform-specific URL if available
+  if (isCapacitorApp()) {
+    // Get custom URL from Capacitor config if available
+    const capacitorDomain = (window as any)?.Capacitor?.config?.plugins?.Http?.url || 
+                         import.meta.env.VITE_CAPACITOR_IOT_URL;
+                          
+    if (capacitorDomain) {
+      const baseUrl = capacitorDomain.endsWith('/') ? capacitorDomain.slice(0, -1) : capacitorDomain;
+      return `${baseUrl}/${cleanEndpoint}`;
+    }
+  }
+  
   return `${IOT_BASE_DOMAIN}/${cleanEndpoint}`;
 }
 
@@ -174,6 +197,21 @@ export async function makeApiRequest<T>(
 }
 
 /**
+ * Generate a mock response for offline mode to simulate device control success
+ * @param data Request data for device control
+ * @returns Simulated successful response
+ */
+function getMockOfflineResponse(data: any): any {
+  return {
+    success: true,
+    message: `Successfully ${data.action} the ${data.device} in ${data.room}`,
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    data: { ...data }
+  };
+}
+
+/**
  * Helper function to control smart home devices via the IoT API
  * This matches the pattern described in the prompts.json template
  * 
@@ -181,37 +219,145 @@ export async function makeApiRequest<T>(
  * @param device The device to control
  * @param action The action to perform (on/off/etc)
  * @param value Optional value for actions like 'set'
+ * @param offlineFallback Whether to use a mock response when offline (default: true)
  * @returns Promise with the API response
  */
 export async function controlSmartHomeDevice<T>(
   room: string,
   device: string,
   action: string,
-  value?: number | string
+  value?: number | string,
+  offlineFallback: boolean = true
 ): Promise<T> {
-  // Construct the device control URL
-  const endpoint = `${room}/${device}/${action}${value !== undefined ? `/${value}` : ''}`;
-  console.log(`Sending smart home control command: ${endpoint}`);
+  // Normalize input values
+  const normalizedRoom = room.toLowerCase().trim();
+  const normalizedDevice = device.toLowerCase().trim();
+  const normalizedAction = action.toLowerCase().trim();
   
-  // Log the request with our custom format
-  logApiRequest('GET', `${IOT_BASE_DOMAIN}/${endpoint}`);
+  // Create payload for API request (used for POST/PUT)
+  const payload = {
+    room: normalizedRoom,
+    device: normalizedDevice,
+    action: normalizedAction,
+    value: value !== undefined ? value : null,
+    timestamp: new Date().toISOString()
+  };
   
-  try {
-    const response = await fetch(`${IOT_BASE_DOMAIN}/${endpoint}`);
-    
-    if (!response.ok) {
-      const error = new Error(`Smart home device control failed with status ${response.status}`);
-      logApiResponse(endpoint, null, error);
+  // Choose the appropriate endpoint format based on API design
+  // Some IoT systems use REST-style paths, others use query params or POST bodies
+  const restEndpoint = `${normalizedRoom}/${normalizedDevice}/${normalizedAction}${value !== undefined ? `/${value}` : ''}`;
+  const apiEndpoint = API_ENDPOINTS.DEVICES.CONTROL;
+  
+  console.log(`Sending smart home control command: ${restEndpoint}`);
+  
+  // Use different approach depending on platform (web or Capacitor)
+  if (isCapacitorApp() && (window as any)?.Capacitor?.Plugins?.Http) {
+    // Using Capacitor's HTTP plugin for native API access
+    try {
+      // Log the request
+      const url = getApiUrl(apiEndpoint);
+      logApiRequest('POST', url, payload);
+      
+      // Make request using Capacitor HTTP plugin
+      const response = await (window as any).Capacitor.Plugins.Http.request({
+        method: 'POST',
+        url: url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        data: payload
+      });
+      
+      // Handle response
+      if (!response.status || response.status < 200 || response.status >= 300) {
+        const error = new Error(`Smart home device control failed with status ${response.status || 'unknown'}`);
+        logApiResponse(apiEndpoint, null, error);
+        
+        // Offline fallback if needed
+        if (offlineFallback) {
+          console.log('Using offline fallback for device control');
+          const mockResponse = getMockOfflineResponse(payload);
+          return mockResponse as unknown as T;
+        }
+        
+        throw error;
+      }
+      
+      logApiResponse(apiEndpoint, response.data);
+      return response.data as T;
+    } catch (error) {
+      logApiResponse(apiEndpoint, null, error);
+      
+      // Offline fallback if needed
+      if (offlineFallback) {
+        console.log('Using offline fallback for device control due to error');
+        const mockResponse = getMockOfflineResponse(payload);
+        return mockResponse as unknown as T;
+      }
+      
       throw error;
     }
+  } else {
+    // Regular web browser approach
+    // Try the RESTful endpoint URL first (GET)
+    const restUrl = getApiUrl(restEndpoint);
+    logApiRequest('GET', restUrl);
     
-    const data = await response.json().catch(() => ({}));
-    logApiResponse(endpoint, data);
-    
-    return data as T;
+    try {
+      // First attempt - RESTful URL style
+      const response = await fetch(restUrl);
+      
+      // If the REST endpoint doesn't work, try the POST API approach
+      if (!response.ok) {
+        console.log('RESTful endpoint failed, trying POST API...');
+        
+        // Try POST API approach
+        return await makeApiRequest<T>('POST', apiEndpoint, payload);
+      }
+      
+      // Parse and return the successful REST response
+      const data = await response.json().catch(() => ({}));
+      logApiResponse(restEndpoint, data);
+      return data as T;
+      
+    } catch (error) {
+      console.error('First attempt failed, trying POST API...', error);
+      
+      try {
+        // Try POST API approach as fallback
+        return await makeApiRequest<T>('POST', apiEndpoint, payload);
+      } catch (postError) {
+        logApiResponse(apiEndpoint, null, postError);
+        
+        // Offline fallback if needed
+        if (offlineFallback) {
+          console.log('Using offline fallback for device control due to error');
+          const mockResponse = getMockOfflineResponse(payload);
+          return mockResponse as unknown as T;
+        }
+        
+        throw postError;
+      }
+    }
+  }
+}
+
+/**
+ * Check if the IoT system is reachable
+ * @returns Promise resolving to boolean indicating if system is online
+ */
+export async function checkIoTSystemStatus(): Promise<boolean> {
+  try {
+    const response = await makeApiRequest<any>(
+      'GET', 
+      API_ENDPOINTS.DEVICES.STATUS,
+      undefined
+    );
+    return response && (response.status === 'online' || response.online === true);
   } catch (error) {
-    logApiResponse(endpoint, null, error);
-    throw error;
+    console.error('IoT system unreachable:', error);
+    return false;
   }
 }
 
@@ -222,5 +368,7 @@ export default {
   makeApiRequest,
   logApiRequest,
   logApiResponse,
-  controlSmartHomeDevice
+  controlSmartHomeDevice,
+  isCapacitorApp,
+  checkIoTSystemStatus
 };

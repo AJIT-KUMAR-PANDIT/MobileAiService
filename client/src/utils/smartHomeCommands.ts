@@ -1,240 +1,285 @@
-import { controlSmartHomeDevice } from '@/config/iotDomainConfig';
+/**
+ * Smart Home Command Processor
+ * 
+ * This utility file processes natural language commands related to smart home control
+ * and translates them into API calls to the IoT system.
+ */
 
-// Supported rooms
-export const SUPPORTED_ROOMS = [
-  'living_room',
-  'bedroom',
-  'kitchen',
-  'bathroom',
-  'office',
-  'hallway',
-  'garage',
-  'dining_room'
+import { controlSmartHomeDevice, checkIoTSystemStatus } from '@/config/iotDomainConfig';
+
+// Define structure for command processing result
+export interface SmartHomeCommandResult {
+  success: boolean;
+  message: string;
+  data?: any;
+}
+
+// Common device types that can be controlled
+const DEVICE_TYPES = [
+  'light', 'lights', 'lamp', 'bulb',
+  'thermostat', 'temperature', 'ac', 'air conditioner', 'heat', 'cooling',
+  'fan', 'ceiling fan',
+  'blind', 'blinds', 'shade', 'shades', 'curtain', 'curtains',
+  'door', 'lock', 'door lock',
+  'tv', 'television',
+  'speaker', 'music', 'audio', 'volume',
+  'camera', 'security camera',
+  'vacuum', 'robot vacuum',
+  'outlet', 'plug', 'switch'
 ];
 
-// Supported devices by room type
-export const SUPPORTED_DEVICES: Record<string, string[]> = {
-  living_room: ['lights', 'tv', 'thermostat', 'blinds', 'fan', 'speaker'],
-  bedroom: ['lights', 'fan', 'thermostat', 'blinds', 'speaker', 'alarm'],
-  kitchen: ['lights', 'fridge', 'oven', 'microwave', 'coffee_maker', 'dishwasher'],
-  bathroom: ['lights', 'fan', 'heater', 'mirror'],
-  office: ['lights', 'computer', 'printer', 'thermostat', 'blinds'],
-  hallway: ['lights', 'thermostat'],
-  garage: ['lights', 'door', 'car_charger'],
-  dining_room: ['lights', 'thermostat', 'blinds']
-};
+// Common actions for smart home devices
+const DEVICE_ACTIONS = [
+  'on', 'off', 'toggle',
+  'open', 'close',
+  'up', 'down',
+  'lock', 'unlock',
+  'arm', 'disarm',
+  'increase', 'decrease',
+  'set', 'adjust',
+  'start', 'stop', 'pause'
+];
 
-// Supported actions by device type
-export const SUPPORTED_ACTIONS: Record<string, string[]> = {
-  lights: ['on', 'off', 'dim', 'bright', 'color'],
-  tv: ['on', 'off', 'volume', 'channel', 'mute', 'unmute'],
-  thermostat: ['on', 'off', 'set', 'increase', 'decrease'],
-  fan: ['on', 'off', 'speed', 'oscillate'],
-  blinds: ['open', 'close', 'halfway'],
-  speaker: ['on', 'off', 'volume', 'play', 'pause', 'next', 'previous'],
-  fridge: ['on', 'off', 'set_temperature'],
-  oven: ['on', 'off', 'preheat', 'set_temperature'],
-  microwave: ['on', 'off', 'start', 'stop'],
-  coffee_maker: ['on', 'off', 'brew'],
-  dishwasher: ['on', 'off', 'start', 'stop'],
-  heater: ['on', 'off', 'set_temperature'],
-  mirror: ['on', 'off', 'defog'],
-  computer: ['on', 'off', 'sleep', 'wake'],
-  printer: ['on', 'off', 'print', 'scan'],
-  door: ['open', 'close', 'lock', 'unlock'],
-  car_charger: ['on', 'off', 'fast_charge'],
-  alarm: ['on', 'off', 'snooze', 'set']
-};
+// Common room names in a house
+const ROOM_NAMES = [
+  'living room', 'bedroom', 'kitchen', 'bathroom', 'office', 
+  'dining room', 'family room', 'hallway', 'basement',
+  'master bedroom', 'guest room', 'entryway', 'foyer',
+  'garage', 'attic', 'porch', 'patio', 'balcony'
+];
 
-// Check if a room is supported
-export function isRoomSupported(room: string): boolean {
-  return SUPPORTED_ROOMS.includes(room.toLowerCase().replace(' ', '_'));
+/**
+ * Extract the device type from the command
+ * @param command User's natural language command
+ * @returns The device type found, or null if none detected
+ */
+function extractDeviceType(command: string): string | null {
+  const lowerCommand = command.toLowerCase();
+  
+  for (const device of DEVICE_TYPES) {
+    if (lowerCommand.includes(device)) {
+      return device;
+    }
+  }
+  
+  return null;
 }
 
-// Check if a device is supported in a room
-export function isDeviceSupported(room: string, device: string): boolean {
-  const normalizedRoom = room.toLowerCase().replace(' ', '_');
-  const normalizedDevice = device.toLowerCase().replace(' ', '_');
+/**
+ * Extract the room name from the command
+ * @param command User's natural language command
+ * @returns The room name found, or 'default' if none detected
+ */
+function extractRoom(command: string): string {
+  const lowerCommand = command.toLowerCase();
   
-  return (
-    SUPPORTED_ROOMS.includes(normalizedRoom) &&
-    SUPPORTED_DEVICES[normalizedRoom].includes(normalizedDevice)
-  );
+  for (const room of ROOM_NAMES) {
+    if (lowerCommand.includes(room)) {
+      return room;
+    }
+  }
+  
+  // Check for some common room indicators
+  if (lowerCommand.includes('upstairs')) {
+    return 'upstairs';
+  } else if (lowerCommand.includes('downstairs')) {
+    return 'downstairs';
+  } else if (lowerCommand.includes('outside')) {
+    return 'outside';
+  }
+  
+  // Default room if none specified
+  return 'living room';
 }
 
-// Check if an action is supported for a device
-export function isActionSupported(device: string, action: string): boolean {
-  const normalizedDevice = device.toLowerCase().replace(' ', '_');
-  const normalizedAction = action.toLowerCase().replace(' ', '_');
+/**
+ * Extract the action to perform from the command
+ * @param command User's natural language command
+ * @returns The action found, or null if none detected
+ */
+function extractAction(command: string): string | null {
+  const lowerCommand = command.toLowerCase();
   
-  return (
-    normalizedDevice in SUPPORTED_ACTIONS &&
-    SUPPORTED_ACTIONS[normalizedDevice].includes(normalizedAction)
-  );
+  // Direct action matching
+  for (const action of DEVICE_ACTIONS) {
+    if (lowerCommand.includes(` ${action} `) || 
+        lowerCommand.startsWith(`${action} `) || 
+        lowerCommand.endsWith(` ${action}`)) {
+      return action;
+    }
+  }
+  
+  // Special case handling for common phrases
+  if (lowerCommand.includes('turn on') || lowerCommand.includes('switch on')) {
+    return 'on';
+  } else if (lowerCommand.includes('turn off') || lowerCommand.includes('switch off')) {
+    return 'off';
+  } else if (lowerCommand.includes('dim') || lowerCommand.includes('lower')) {
+    return 'decrease';
+  } else if (lowerCommand.includes('brighten') || lowerCommand.includes('raise')) {
+    return 'increase';
+  }
+  
+  return null;
 }
 
-// Execute a smart home command
-export async function executeSmartHomeCommand(
-  room: string,
-  device: string,
-  action: string,
-  value?: string | number
-): Promise<{ success: boolean; message: string }> {
-  const normalizedRoom = room.toLowerCase().replace(' ', '_');
-  const normalizedDevice = device.toLowerCase().replace(' ', '_');
-  const normalizedAction = action.toLowerCase().replace(' ', '_');
+/**
+ * Extract a value from the command if present (e.g., temperature, brightness level)
+ * @param command User's natural language command
+ * @returns The value found, or null if none detected
+ */
+function extractValue(command: string): number | null {
+  const lowerCommand = command.toLowerCase();
   
-  // Validate inputs
-  if (!isRoomSupported(normalizedRoom)) {
-    return { 
-      success: false, 
-      message: `Sorry, I don't recognize the room "${room}". Supported rooms are: ${SUPPORTED_ROOMS.join(', ')}` 
+  // Look for numbers in the command
+  const numberMatches = lowerCommand.match(/\b(\d+)(\.\d+)?\b/g);
+  if (numberMatches && numberMatches.length > 0) {
+    return parseFloat(numberMatches[0]);
+  }
+  
+  // Look for percentage values
+  const percentMatches = lowerCommand.match(/(\d+)(\.\d+)?%/g);
+  if (percentMatches && percentMatches.length > 0) {
+    return parseFloat(percentMatches[0]);
+  }
+  
+  // Check for common value words
+  if (lowerCommand.includes('halfway') || lowerCommand.includes('half way')) {
+    return 50;
+  } else if (lowerCommand.includes('full') || lowerCommand.includes('maximum')) {
+    return 100;
+  } else if (lowerCommand.includes('minimum') || lowerCommand.includes('lowest')) {
+    return 0;
+  }
+  
+  return null;
+}
+
+/**
+ * Process a smart home command to control devices via the IoT API
+ * @param command User's natural language command
+ * @returns Result of the command execution
+ */
+export async function processSmartHomeCommand(command: string): Promise<SmartHomeCommandResult> {
+  if (!command.trim()) {
+    return {
+      success: false,
+      message: "No command specified."
     };
   }
   
-  if (!isDeviceSupported(normalizedRoom, normalizedDevice)) {
-    return { 
-      success: false, 
-      message: `Sorry, there is no "${device}" in the ${room}. Available devices are: ${SUPPORTED_DEVICES[normalizedRoom].join(', ')}` 
+  // Check if the system is online
+  const isOnline = await checkIoTSystemStatus().catch(() => false);
+  
+  // Extract command components
+  const device = extractDeviceType(command);
+  const room = extractRoom(command);
+  const action = extractAction(command);
+  const value = extractValue(command);
+  
+  // Validate extracted components
+  if (!device) {
+    return {
+      success: false,
+      message: "Sorry, I couldn't identify which device you want to control."
     };
   }
   
-  if (!isActionSupported(normalizedDevice, normalizedAction)) {
-    return { 
-      success: false, 
-      message: `Sorry, the "${device}" doesn't support the "${action}" action. Supported actions are: ${SUPPORTED_ACTIONS[normalizedDevice].join(', ')}` 
+  if (!action) {
+    return {
+      success: false,
+      message: `I'm not sure what you want to do with the ${device} in the ${room}.`
     };
   }
+  
+  // Log the processed command
+  console.log(`Smart home command processed: ${action} ${device} in ${room}${value !== null ? ` to ${value}` : ''}`);
   
   try {
-    // Call the API function from iotDomainConfig
+    // Special handling for "set" actions that require a value
+    if (action === 'set' && value === null) {
+      return {
+        success: false,
+        message: `I need a value to set the ${device} in the ${room}. Please specify a value.`
+      };
+    }
+    
+    // Handle "increase" and "decrease" without a specific value
+    let finalValue = value;
+    if ((action === 'increase' || action === 'decrease') && value === null) {
+      finalValue = action === 'increase' ? 10 : -10; // Default adjustment by 10%
+    }
+    
+    // Send the command to the IoT API
     const response = await controlSmartHomeDevice(
-      normalizedRoom,
-      normalizedDevice,
-      normalizedAction,
-      value
+      room,
+      device,
+      action,
+      finalValue !== null ? finalValue : undefined
     );
     
-    console.log(`Smart home command executed: ${normalizedRoom} ${normalizedDevice} ${normalizedAction} ${value || ''}`);
-    console.log('Response:', response);
+    // Format a natural language response
+    let successMessage = '';
+    
+    if (action === 'on' || action === 'start') {
+      successMessage = `I've turned on the ${device} in the ${room}.`;
+    } else if (action === 'off' || action === 'stop') {
+      successMessage = `I've turned off the ${device} in the ${room}.`;
+    } else if (action === 'increase') {
+      successMessage = `I've increased the ${device} in the ${room}${finalValue ? ` by ${finalValue}%` : ''}.`;
+    } else if (action === 'decrease') {
+      successMessage = `I've decreased the ${device} in the ${room}${finalValue ? ` by ${Math.abs(Number(finalValue))}%` : ''}.`;
+    } else if (action === 'set') {
+      successMessage = `I've set the ${device} in the ${room} to ${finalValue}${
+        device.includes('thermostat') || device.includes('temperature') ? '°' : '%'
+      }.`;
+    } else {
+      successMessage = `I've ${action}ed the ${device} in the ${room}.`;
+    }
     
     return {
       success: true,
-      message: `${action.charAt(0).toUpperCase() + action.slice(1)} the ${device} in the ${room}${value ? ` to ${value}` : ''}`
+      message: isOnline ? successMessage : `${successMessage} (Note: Running in offline mode)`,
+      data: response
     };
+    
   } catch (error) {
-    console.error('Error executing smart home command:', error);
-    return {
-      success: false,
-      message: `Sorry, I couldn't control the ${device} in the ${room}. Please try again later.`
-    };
-  }
-}
-
-// Parse natural language commands to extract room, device, action, and value
-export function parseSmartHomeCommand(command: string): { 
-  room?: string; 
-  device?: string; 
-  action?: string; 
-  value?: string | number; 
-} {
-  const normalizedCommand = command.toLowerCase();
-  let result: { room?: string; device?: string; action?: string; value?: string | number } = {};
-  
-  // Check for rooms
-  for (const room of SUPPORTED_ROOMS) {
-    const readableRoom = room.replace('_', ' ');
-    if (normalizedCommand.includes(readableRoom)) {
-      result.room = room;
-      break;
-    }
-  }
-  
-  // Check for devices
-  if (result.room) {
-    const devices = SUPPORTED_DEVICES[result.room];
-    for (const device of devices) {
-      const readableDevice = device.replace('_', ' ');
-      if (normalizedCommand.includes(readableDevice)) {
-        result.device = device;
-        break;
-      }
-    }
-  } else {
-    // If room wasn't found, check all possible devices
-    const allDevices = Object.values(SUPPORTED_DEVICES).flat();
-    for (const device of allDevices) {
-      const readableDevice = device.replace('_', ' ');
-      if (normalizedCommand.includes(readableDevice)) {
-        result.device = device;
-        break;
-      }
-    }
-  }
-  
-  // Check for actions
-  if (result.device) {
-    const actions = SUPPORTED_ACTIONS[result.device];
-    for (const action of actions) {
-      const readableAction = action.replace('_', ' ');
-      if (normalizedCommand.includes(readableAction)) {
-        result.action = action;
-        break;
-      }
+    console.error('Smart home command execution failed:', error);
+    
+    // Offline fallback response
+    if (!isOnline) {
+      return {
+        success: true,
+        message: `I'll ${action} the ${device} in the ${room} when the system is back online.`,
+        data: {
+          offline: true,
+          pendingCommand: {
+            room,
+            device,
+            action,
+            value: value
+          }
+        }
+      };
     }
     
-    // Extract values for certain actions
-    if (result.action === 'set' || result.action === 'volume' || result.action === 'channel' || 
-        result.action === 'speed' || result.action === 'set_temperature') {
-      // Try to find a number in the command
-      const numberMatch = normalizedCommand.match(/\d+/);
-      if (numberMatch) {
-        result.value = parseInt(numberMatch[0]);
-      }
-    } else if (result.action === 'color' && result.device === 'lights') {
-      // Try to find color names
-      const colors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple', 'pink', 'white', 'warm', 'cool'];
-      for (const color of colors) {
-        if (normalizedCommand.includes(color)) {
-          result.value = color;
-          break;
-        }
-      }
-    }
-  }
-  
-  return result;
-}
-
-// Process a natural language command for smart home control
-export async function processSmartHomeCommand(command: string): Promise<{ 
-  success: boolean; 
-  message: string;
-  room?: string;
-  device?: string;
-  action?: string;
-  value?: string | number;
-}> {
-  const parsed = parseSmartHomeCommand(command);
-  
-  // If we're missing essential information
-  if (!parsed.room || !parsed.device || !parsed.action) {
     return {
       success: false,
-      message: "I didn't understand that smart home command completely. Please specify the room, device, and action.",
-      ...parsed
+      message: `Sorry, I couldn't ${action} the ${device} in the ${room} right now. Please try again later.`,
+      data: error
     };
   }
+}
+
+/**
+ * Determine if a command is a smart home control command
+ * @param command User's natural language command
+ * @returns True if this appears to be a smart home command
+ */
+export function isSmartHomeCommand(command: string): boolean {
+  const device = extractDeviceType(command);
+  const action = extractAction(command);
   
-  const result = await executeSmartHomeCommand(
-    parsed.room,
-    parsed.device,
-    parsed.action,
-    parsed.value
-  );
-  
-  return {
-    ...result,
-    ...parsed
-  };
+  // It's a smart home command if we can identify both a device and an action
+  return device !== null && action !== null;
 }
