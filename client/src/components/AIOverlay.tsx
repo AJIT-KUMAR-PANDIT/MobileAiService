@@ -47,6 +47,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTimer, setActiveTimer] = useState<{ id: string; endTime: number; display: string } | null>(null);
   const [isNormalChatMode, setIsNormalChatMode] = useState(false);
+  const [isDeviceControlEnabled, setIsDeviceControlEnabled] = useState(true);
   
   // Use our custom offline status hook
   const { isOffline } = useOfflineStatus();
@@ -256,12 +257,60 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       }
       
       // Check if this is a special command
-      const commandResult = await processVoiceCommand(text);
+      let commandResult = await processVoiceCommand(text);
+      
+      // Check for enabling/disabling device control explicitly
+      if (text.toLowerCase().includes('enable device control') || 
+          text.toLowerCase().includes('turn on device control')) {
+        setIsDeviceControlEnabled(true);
+        setIsNormalChatMode(false);
+        
+        const response = "Device control mode enabled. I can now control your smart home devices.";
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: response
+        };
+        
+        if (mode === "chat") {
+          setChatMessages(prev => [...prev, assistantMessage]);
+          setIsTyping(false);
+        } else {
+          setAIResponse(response);
+          setInstruction("Device control enabled. Tap to speak again.");
+          speak(response);
+        }
+        
+        return;
+      }
+      
+      if (text.toLowerCase().includes('disable device control') || 
+          text.toLowerCase().includes('turn off device control')) {
+        setIsDeviceControlEnabled(false);
+        setIsNormalChatMode(true);
+        
+        const response = "Device control mode disabled. I won't control any smart home devices until you enable it again.";
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: response
+        };
+        
+        if (mode === "chat") {
+          setChatMessages(prev => [...prev, assistantMessage]);
+          setIsTyping(false);
+        } else {
+          setAIResponse(response);
+          setInstruction("Device control disabled. Tap to speak again.");
+          speak(response);
+        }
+        
+        return;
+      }
       
       // Handle normal chat mode
       if (commandResult.type === CommandType.NORMAL_CHAT) {
         // Update normal chat mode state
         setIsNormalChatMode(true);
+        setIsDeviceControlEnabled(false);
         
         // If command has a message (welcome/instruction), use it directly
         if (commandResult.message) {
@@ -294,6 +343,37 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       else if (isNormalChatMode && commandResult.type !== CommandType.GENERAL) {
         console.log("Exiting normal chat mode due to specific command");
         setIsNormalChatMode(false);
+        setIsDeviceControlEnabled(true);
+      }
+      
+      // Override smart home commands if device control is disabled
+      if (!isDeviceControlEnabled && commandResult.type === CommandType.SMART_HOME) {
+        console.log("Smart home command detected but device control is disabled");
+        
+        // Convert to a normal chat message instead
+        commandResult = {
+          type: CommandType.GENERAL,
+          success: true,
+          message: "",
+          data: {
+            originalCommand: text,
+            deviceControlDisabled: true
+          }
+        };
+        
+        // Inform user that device control is disabled
+        const notice = "Device control is currently disabled. Please enable device control first, or continue chatting in normal mode.";
+        
+        if (mode === "chat") {
+          setChatMessages(prev => [...prev, { role: "assistant", content: notice }]);
+          setIsTyping(false);
+          return;
+        } else {
+          setAIResponse(notice);
+          setInstruction("Device control disabled. Tap to speak again.");
+          speak(notice);
+          return;
+        }
       }
       
       if (commandResult.success && commandResult.type !== CommandType.GENERAL && commandResult.type !== CommandType.NORMAL_CHAT) {
@@ -414,9 +494,97 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     
     try {
       // Check if this is a special command
-      const commandResult = await processVoiceCommand(message);
+      let commandResult = await processVoiceCommand(message);
       
-      if (commandResult.success && commandResult.type !== CommandType.GENERAL) {
+      // Check for enabling/disabling device control explicitly
+      if (message.toLowerCase().includes('enable device control') || 
+          message.toLowerCase().includes('turn on device control')) {
+        setIsDeviceControlEnabled(true);
+        setIsNormalChatMode(false);
+        
+        const response = "Device control mode enabled. I can now control your smart home devices.";
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: response
+        };
+        
+        setChatMessages(prev => [...prev, assistantMessage]);
+        setIsTyping(false);
+        return;
+      }
+      
+      if (message.toLowerCase().includes('disable device control') || 
+          message.toLowerCase().includes('turn off device control')) {
+        setIsDeviceControlEnabled(false);
+        setIsNormalChatMode(true);
+        
+        const response = "Device control mode disabled. I won't control any smart home devices until you enable it again.";
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: response
+        };
+        
+        setChatMessages(prev => [...prev, assistantMessage]);
+        setIsTyping(false);
+        return;
+      }
+      
+      // Handle normal chat mode
+      if (commandResult.type === CommandType.NORMAL_CHAT) {
+        // Update normal chat mode state
+        setIsNormalChatMode(true);
+        setIsDeviceControlEnabled(false);
+        
+        // If command has a message (welcome/instruction), use it directly
+        if (commandResult.message) {
+          const assistantMessage: Message = { 
+            role: "assistant", 
+            content: commandResult.message
+          };
+          
+          // Update chat with normal chat mode message
+          setChatMessages(prev => [...prev, assistantMessage]);
+          setIsTyping(false);
+          return;
+        }
+        
+        // If they had a follow-up question with the normal chat request,
+        // extract it and continue to LLM processing with the cleaned text
+        if (commandResult.data?.processedText) {
+          message = commandResult.data.processedText;
+          console.log("Normal chat mode with question:", message);
+        }
+      } 
+      // Exit normal chat mode if they're using a specific command
+      else if (isNormalChatMode && commandResult.type !== CommandType.GENERAL) {
+        console.log("Exiting normal chat mode due to specific command");
+        setIsNormalChatMode(false);
+        setIsDeviceControlEnabled(true);
+      }
+      
+      // Override smart home commands if device control is disabled
+      if (!isDeviceControlEnabled && commandResult.type === CommandType.SMART_HOME) {
+        console.log("Smart home command detected but device control is disabled");
+        
+        // Convert to a normal chat message instead
+        commandResult = {
+          type: CommandType.GENERAL,
+          success: true,
+          message: "",
+          data: {
+            originalCommand: message,
+            deviceControlDisabled: true
+          }
+        };
+        
+        // Inform user that device control is disabled
+        const notice = "Device control is currently disabled. Please enable device control first, or continue chatting in normal mode.";
+        setChatMessages(prev => [...prev, { role: "assistant", content: notice }]);
+        setIsTyping(false);
+        return;
+      }
+      
+      if (commandResult.success && commandResult.type !== CommandType.GENERAL && commandResult.type !== CommandType.NORMAL_CHAT) {
         // Handle special commands (same as voice input)
         const specialResponse = commandResult.message;
         
@@ -596,17 +764,51 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     <span className="text-xs text-gray-400">
                       {isModelLoaded ? `Using ${modelName}` : "Loading model..."}
                     </span>
+                    {isNormalChatMode && (
+                      <>
+                        <span className="mx-1 text-gray-500">•</span>
+                        <span className="text-xs text-yellow-400 font-semibold">Normal Chat Mode</span>
+                      </>
+                    )}
+                    {!isNormalChatMode && isDeviceControlEnabled && (
+                      <>
+                        <span className="mx-1 text-gray-500">•</span>
+                        <span className="text-xs text-blue-400 font-semibold">Device Control Enabled</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
               
               {/* Controls */}
               <div className="flex items-center space-x-2">
+                {/* Device Control Toggle Button */}
+                <button 
+                  onClick={() => {
+                    setIsDeviceControlEnabled(!isDeviceControlEnabled);
+                    setIsNormalChatMode(isDeviceControlEnabled); // Set to opposite state
+                  }}
+                  className={`relative p-2 rounded-full hover:bg-gray-700 transition-colors ${isDeviceControlEnabled ? 'text-blue-400' : 'text-yellow-400'} hover:text-white`}
+                  title={isDeviceControlEnabled ? "Switch to normal chat mode" : "Enable device control mode"}
+                >
+                  {isDeviceControlEnabled ? (
+                    // Smart home icon
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
+                    </svg>
+                  ) : (
+                    // Chat icon
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M18 5v8a2 2 0 01-2 2h-5l-5 4v-4H4a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2zM7 8H5v2h2V8zm2 0h2v2H9V8zm6 0h-2v2h2V8z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+
                 {/* Wake Word Toggle (only in voice mode) */}
                 {mode === "voice" && (
                   <button 
                     onClick={toggleWakeWordMode}
-                    className={`p-2 rounded-full hover:bg-gray-700 transition-colors ${isWakeWordMode ? 'text-accent' : 'text-gray-400'} hover:text-white`}
+                    className={`relative p-2 rounded-full hover:bg-gray-700 transition-colors ${isWakeWordMode ? 'text-accent' : 'text-gray-400'} hover:text-white`}
                     title={isWakeWordMode ? "Wake word 'Luna' is active" : "Wake word detection off"}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -629,7 +831,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                   </button>
                 )}
                 
-                {/* Mode Toggle */}
+                {/* Voice/Chat Mode Toggle */}
                 <button 
                   onClick={toggleMode}
                   className="p-2 rounded-full hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
