@@ -11,16 +11,16 @@ export default defineConfig({
     process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
+            m.cartographer()
           ),
         ]
       : []),
   ],
   server: {
     allowedHosts: [
-      '4fb3-2409-408a-b08-ec29-4940-4ec5-813b-a7c1.ngrok-free.app',
-      'ngrok-free.app' // Wildcard for all ngrok subdomains
-    ]
+      "1379-2409-408a-b08-ec29-e19d-731b-a2bd-c24f.ngrok-free.app",
+      "ngrok-free.app", // Wildcard for all ngrok subdomains
+    ],
   },
   resolve: {
     alias: {

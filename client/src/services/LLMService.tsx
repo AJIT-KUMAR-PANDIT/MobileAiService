@@ -556,7 +556,7 @@ export const useLLMService = (options = defaultModelOptions) => {
         }
       }
 
-      // In the loadModel function, update the CreateMLCEngine call
+      // ... existing code ...
       if (modelExists) {
         console.log(
           `Model ${modelId} found in IndexedDB cache, loading from cache`
@@ -565,10 +565,11 @@ export const useLLMService = (options = defaultModelOptions) => {
           // Model exists, load from IndexedDB
           const cachedModel = await loadModelFromIndexedDB(modelId);
           if (cachedModel) {
-            // Initialize WebLLM with cached model
+            // Always create a new engine instance, even with cached data
             console.log("Initializing engine with cached model data");
             const engine = (await CreateMLCEngine(modelId, {
-              // Remove useIndexedDB property and use the correct config options
+              // If CreateMLCEngine supports passing cached data, do so here
+              // e.g., modelData: cachedModel,
               initProgressCallback: (report: InitProgressReport) => {
                 console.log("Loading cached model progress:", report.progress);
               },
@@ -592,6 +593,7 @@ export const useLLMService = (options = defaultModelOptions) => {
           console.log("Will attempt to download fresh model");
         }
       }
+      // ... existing code ...
 
       // Model not in cache or cache loading failed, download it
       setIsDownloading(true);
