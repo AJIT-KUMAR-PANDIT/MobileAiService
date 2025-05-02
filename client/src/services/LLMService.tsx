@@ -387,18 +387,26 @@ export const useLLMService = (options = defaultModelOptions) => {
       setIsModelLoaded(false);
       setError(null);
       console.log("Starting model load process...");
-  
+
       const { modelId } = modelOptions;
       console.log("Using model ID:", modelId);
-  
+
       // Add timeout for model loading with a longer duration
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Model loading timeout - please check your internet connection and try again")), 300000); // Increased to 5 minutes
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Model loading timeout - please check your internet connection and try again"
+              )
+            ),
+          30000000
+        ); // Increased to 5 minutes
       });
-  
+
       // Format readable model name from the technical ID
       let readableName = modelId;
-  
+
       // Handle different model ID patterns
       if (modelId.includes("Qwen")) {
         readableName = "Luna (qwen 2.5)";
@@ -411,14 +419,14 @@ export const useLLMService = (options = defaultModelOptions) => {
       } else if (modelId.includes("Llama")) {
         readableName = "Llama 2";
       }
-  
+
       console.log("Model readable name:", readableName);
       setModelName(readableName);
-  
+
       // Check if model exists in IndexedDB
       const modelExists = await checkModelExists(modelId);
       console.log(`Model ${modelId} exists in IndexedDB: ${modelExists}`);
-  
+
       // Check if model is already loaded in memory
       if (model && isModelLoaded) {
         // If the current loaded model is the same as requested, reuse it
@@ -434,7 +442,7 @@ export const useLLMService = (options = defaultModelOptions) => {
           await model.close?.();
         }
       }
-  
+
       // In the loadModel function, update the CreateMLCEngine call
       if (modelExists) {
         console.log(
@@ -452,12 +460,12 @@ export const useLLMService = (options = defaultModelOptions) => {
                 console.log("Loading cached model progress:", report.progress);
               },
             })) as unknown as ModelEngine;
-  
+
             // Add a getModelId method if it doesn't exist
             if (!engine.getModelId) {
               engine.getModelId = () => Promise.resolve(modelId);
             }
-  
+
             setModel(engine);
             setIsModelLoaded(true);
             return engine;
@@ -471,20 +479,20 @@ export const useLLMService = (options = defaultModelOptions) => {
           console.log("Will attempt to download fresh model");
         }
       }
-  
+
       // Model not in cache or cache loading failed, download it
       setIsDownloading(true);
       setDownloadProgress(0);
-  
+
       // Add retry mechanism for model loading
       let retryCount = 0;
       const maxRetries = 2;
       let engine = null;
-  
+
       while (retryCount <= maxRetries && !engine) {
         try {
           console.log(`Attempt ${retryCount + 1} to load model ${modelId}`);
-  
+
           const enginePromise = CreateMLCEngine(modelId, {
             initProgressCallback: (report: InitProgressReport) => {
               setDownloadProgress(report.progress * 100);
@@ -495,18 +503,18 @@ export const useLLMService = (options = defaultModelOptions) => {
               }
             },
           }) as unknown as Promise<ModelEngine>;
-  
+
           // Race between timeout and model loading
           engine = (await Promise.race([
             enginePromise,
             timeoutPromise,
           ])) as ModelEngine;
-  
+
           break; // If successful, exit the retry loop
         } catch (loadError) {
           retryCount++;
           console.error(`Attempt ${retryCount} failed:`, loadError);
-  
+
           if (retryCount <= maxRetries) {
             console.log(`Retrying in 3 seconds...`);
             await new Promise((resolve) => setTimeout(resolve, 3000)); // Wait 3 seconds before retry
@@ -515,15 +523,15 @@ export const useLLMService = (options = defaultModelOptions) => {
           }
         }
       }
-  
+
       if (!engine) {
         throw new Error("Failed to load model after multiple attempts");
       }
-  
+
       setModel(engine);
       setIsModelLoaded(true);
       setIsDownloading(false);
-  
+
       // Save model to IndexedDB for future use
       try {
         const modelData = await engine.save();
@@ -532,7 +540,7 @@ export const useLLMService = (options = defaultModelOptions) => {
       } catch (saveError) {
         console.error("Error saving model to IndexedDB:", saveError);
       }
-  
+
       return engine;
     } catch (err: unknown) {
       console.error("Error loading model:", err);
@@ -540,19 +548,19 @@ export const useLLMService = (options = defaultModelOptions) => {
         err instanceof Error ? err.message : "Failed to load model";
       setError(errorMessage);
       setIsDownloading(false);
-  
+
       // If the current model isn't the fallback model, try the fallback
       const currentModelId = modelOptions.modelId;
       const fallbackModelId = fallbackModelOptions.modelId;
-  
+
       if (currentModelId !== fallbackModelId) {
         console.log("Trying fallback model:", fallbackModelId);
         setModelOptions(fallbackModelOptions);
-  
+
         // The loadModel will be called again with the new options via the useEffect
         return null;
       }
-  
+
       return null;
     }
   }, [modelOptions]);

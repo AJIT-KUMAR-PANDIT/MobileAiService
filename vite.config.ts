@@ -16,6 +16,12 @@ export default defineConfig({
         ]
       : []),
   ],
+  server: {
+    allowedHosts: [
+      '4fb3-2409-408a-b08-ec29-4940-4ec5-813b-a7c1.ngrok-free.app',
+      'ngrok-free.app' // Wildcard for all ngrok subdomains
+    ]
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
