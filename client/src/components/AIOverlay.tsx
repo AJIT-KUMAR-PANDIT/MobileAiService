@@ -4,11 +4,18 @@ import { VoiceUI } from "./VoiceUI";
 import { ChatUI } from "./ChatUI";
 import { ModelDownloadStatus } from "./ModelDownloadStatus";
 import { ModelSelector } from "./ModelSelector";
+import { ThemeCustomizer } from "./ThemeCustomizer";
+import { ConversationHistory } from "./ConversationHistory";
+import { OfflineBanner } from "./OfflineBanner";
 import { useLLMService } from "@/services/LLMService";
 import { Message, ModelOptions } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
 import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
+import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import useWakeWordDetection from "@/services/WakeWordService";
+import { processVoiceCommand, CommandType } from "@/utils/voiceCommands";
+import { saveConversation, getConversations } from "@/utils/conversationHistory";
+import { useTheme } from "@/contexts/ThemeContext";
 import prompts from "@/data/prompts.json";
 import { prebuiltAppConfig } from "@mlc-ai/web-llm";
 
@@ -36,6 +43,15 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   const [instruction, setInstruction] = useState("Say 'Luna' or tap the microphone");
   const [isWakeWordMode, setIsWakeWordMode] = useState(true);
   const [wakeupSoundUrl, setWakeupSoundUrl] = useState(DEFAULT_SOUND_URL);
+  const [showHistorySidebar, setShowHistorySidebar] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [activeTimer, setActiveTimer] = useState<{ id: string; endTime: number; display: string } | null>(null);
+  
+  // Use our custom offline status hook
+  const { isOffline } = useOfflineStatus();
+  
+  // Use the theme context
+  const { mode: themeMode } = useTheme();
   
   // Generate wakeup sound when component mounts
   useEffect(() => {
@@ -232,21 +248,94 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     try {
       const userMessage: Message = { role: "user", content: text };
       
+      // Add user message to chat history
       if (mode === "chat") {
         setChatMessages(prev => [...prev, userMessage]);
         setIsTyping(true);
       }
       
+      // Check if this is a special command
+      const commandResult = await processVoiceCommand(text);
+      
+      if (commandResult.success && commandResult.type !== CommandType.GENERAL) {
+        // Handle special commands
+        const specialResponse = commandResult.message;
+        
+        // Create assistant message with the command response
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: specialResponse 
+        };
+        
+        // Handle specific command types
+        switch (commandResult.type) {
+          case CommandType.TIMER:
+            if (commandResult.data?.durationMs) {
+              // Set a timer
+              const timerEndTime = Date.now() + commandResult.data.durationMs;
+              const timerId = Math.random().toString(36).substring(2);
+              
+              setActiveTimer({
+                id: timerId,
+                endTime: timerEndTime,
+                display: commandResult.data.display
+              });
+              
+              // Set a timeout to alert when timer is done
+              setTimeout(() => {
+                if (activeTimer?.id === timerId) {
+                  // Play an alert sound
+                  const audio = new Audio(wakeupSoundUrl);
+                  audio.play().catch(e => console.error("Failed to play timer alert:", e));
+                  
+                  // Alert the user
+                  speak(`Your timer for ${commandResult.data.display} is complete.`);
+                  setActiveTimer(null);
+                }
+              }, commandResult.data.durationMs);
+            }
+            break;
+            
+          case CommandType.SMART_HOME:
+            // Smart home commands are handled by the processVoiceCommand function
+            console.log("Smart home command executed:", commandResult.data);
+            break;
+        }
+        
+        // Update chat and UI with special command response
+        if (mode === "chat") {
+          setChatMessages(prev => [...prev, assistantMessage]);
+          setIsTyping(false);
+        } else {
+          setAIResponse(specialResponse);
+          setInstruction("Tap the microphone to speak again");
+          speak(specialResponse);
+        }
+        
+        return;
+      }
+      
+      // For general queries, use the LLM
       const systemPrompt = prompts.template;
       const messages = [...chatMessages, userMessage];
       
       // Send to LLM for inference
       const response = await inference(systemPrompt, messages);
       
+      // Create assistant message with LLM response
       const assistantMessage: Message = { role: "assistant", content: response };
       
+      // Update conversation
+      const updatedMessages = [...chatMessages, userMessage, assistantMessage];
+      
+      // Save conversation history (only if meaningful interaction occurred)
+      if (updatedMessages.length > 3) {
+        saveConversation(updatedMessages, modelOptions.modelId);
+      }
+      
+      // Update UI based on mode
       if (mode === "chat") {
-        setChatMessages(prev => [...prev, assistantMessage]);
+        setChatMessages(updatedMessages);
         setIsTyping(false);
       } else {
         setAIResponse(response);
@@ -257,8 +346,23 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       }
     } catch (error) {
       console.error("Error processing voice input:", error);
-      setInstruction("Something went wrong. Please try again.");
-      setIsTyping(false);
+      
+      // Offline fallback response
+      if (isOffline) {
+        const offlineResponse = "I'm currently in offline mode and can't process complex requests. I can still help with basic commands and previously saved responses.";
+        
+        if (mode === "chat") {
+          setChatMessages(prev => [...prev, { role: "assistant", content: offlineResponse }]);
+          setIsTyping(false);
+        } else {
+          setAIResponse(offlineResponse);
+          setInstruction("Tap the microphone to speak again");
+          speak(offlineResponse);
+        }
+      } else {
+        setInstruction("Something went wrong. Please try again.");
+        setIsTyping(false);
+      }
     }
   };
 
@@ -270,18 +374,91 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     setIsTyping(true);
     
     try {
+      // Check if this is a special command
+      const commandResult = await processVoiceCommand(message);
+      
+      if (commandResult.success && commandResult.type !== CommandType.GENERAL) {
+        // Handle special commands (same as voice input)
+        const specialResponse = commandResult.message;
+        
+        // Create assistant message with the command response
+        const assistantMessage: Message = { 
+          role: "assistant", 
+          content: specialResponse 
+        };
+        
+        // Handle specific command types (same as voice input)
+        switch (commandResult.type) {
+          case CommandType.TIMER:
+            if (commandResult.data?.durationMs) {
+              // Set a timer
+              const timerEndTime = Date.now() + commandResult.data.durationMs;
+              const timerId = Math.random().toString(36).substring(2);
+              
+              setActiveTimer({
+                id: timerId,
+                endTime: timerEndTime,
+                display: commandResult.data.display
+              });
+              
+              // Set a timeout to alert when timer is done
+              setTimeout(() => {
+                if (activeTimer?.id === timerId) {
+                  // Play an alert sound
+                  const audio = new Audio(wakeupSoundUrl);
+                  audio.play().catch(e => console.error("Failed to play timer alert:", e));
+                  
+                  // Alert the user
+                  speak(`Your timer for ${commandResult.data.display} is complete.`);
+                  setActiveTimer(null);
+                }
+              }, commandResult.data.durationMs);
+            }
+            break;
+            
+          case CommandType.SMART_HOME:
+            // Smart home commands are handled by the processVoiceCommand function
+            console.log("Smart home command executed:", commandResult.data);
+            break;
+        }
+        
+        // Update chat with special command response
+        setChatMessages(prev => [...prev, assistantMessage]);
+        setIsTyping(false);
+        return;
+      }
+      
+      // For general queries, use the LLM
       const systemPrompt = prompts.template;
       const messages = [...chatMessages, userMessage];
       
       // Send to LLM for inference
       const response = await inference(systemPrompt, messages);
       
-      setChatMessages(prev => [
-        ...prev, 
-        { role: "assistant", content: response }
-      ]);
+      // Create assistant message with LLM response
+      const assistantMessage: Message = { role: "assistant", content: response };
+      
+      // Update conversation
+      const updatedMessages = [...chatMessages, userMessage, assistantMessage];
+      
+      // Save conversation history (only if meaningful interaction occurred)
+      if (updatedMessages.length > 3) {
+        saveConversation(updatedMessages, modelOptions.modelId);
+      }
+      
+      // Update chat
+      setChatMessages(updatedMessages);
+      
     } catch (error) {
       console.error("Error sending chat message:", error);
+      
+      // Offline fallback response
+      if (isOffline) {
+        setChatMessages(prev => [...prev, { 
+          role: "assistant", 
+          content: "I'm currently in offline mode and can't process complex requests. I can still help with basic commands and previously saved responses."
+        }]);
+      }
     } finally {
       setIsTyping(false);
     }
