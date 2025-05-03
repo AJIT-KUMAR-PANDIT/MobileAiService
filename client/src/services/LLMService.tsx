@@ -471,7 +471,7 @@ export const useLLMService = (options = defaultModelOptions) => {
                 "Model loading timeout - please check your internet connection and try again"
               )
             ),
-          300000
+          9900000
         );
       });
 
