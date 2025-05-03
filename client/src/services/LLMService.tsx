@@ -25,7 +25,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
+  modelId: "Llama-3.2-1B-Instruct-q4f32_1-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -33,7 +33,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (same as default for reliability)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC", // Using same model as fallback
+  modelId: "Llama-3.2-1B-Instruct-q4f32_1-MLC", // Using same model as fallback
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
@@ -564,6 +564,7 @@ export const useLLMService = (options = defaultModelOptions) => {
               const response = await fetch(url, {
                 ...options,
                 cache: attempt > 1 ? "no-cache" : "default",
+                redirect: "follow",
                 signal: AbortSignal.timeout(1200000), // 20 min timeout for parameter shards
               });
 
@@ -628,6 +629,7 @@ export const useLLMService = (options = defaultModelOptions) => {
               const response = await fetch(url, {
                 ...options,
                 cache: attempt > 1 ? "no-cache" : "default",
+                redirect: "follow",
                 signal: AbortSignal.timeout(600000), // 10 min timeout for other files
               });
 

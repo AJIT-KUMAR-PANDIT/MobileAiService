@@ -18,7 +18,7 @@ export default defineConfig({
   ],
   server: {
     allowedHosts: [
-      "f9c1-2409-408a-2d4b-37af-f902-1f7e-5938-2efc.ngrok-free.app",
+      "2cc4-2409-408a-2d4b-37af-8d49-a97e-3241-fd73.ngrok-free.app",
       "ngrok-free.app", // Wildcard for all ngrok subdomains
     ],
   },
