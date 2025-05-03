@@ -17,12 +17,6 @@ interface ChatMessage {
   content: string;
 }
 
-// Download progress type
-interface DownloadProgress {
-  current: number;
-  total: number;
-}
-
 // Default model config options
 const defaultModelOptions: ModelOptions = {
   modelId: "Llama-3.2-1B-Instruct-q4f32_1-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
@@ -50,7 +44,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
     const requestPersistentStorage = async (): Promise<boolean> => {
       const isCapacitor = typeof (window as any).Capacitor !== "undefined";
       const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
-
       try {
         const sessionStorageKey = "luna-storage-permission-requested";
         const alreadyRequestedThisSession =
@@ -419,7 +412,7 @@ const loadModelFromIndexedDB = async (modelId: string): Promise<any> => {
   }
 };
 
-// Format bytesize to human readable
+// Format byte size to human-readable
 const formatByteSize = (bytes: number): string => {
   if (bytes < 1024) return bytes + " B";
   else if (bytes < 1048576) return (bytes / 1024).toFixed(2) + " KB";
@@ -429,12 +422,18 @@ const formatByteSize = (bytes: number): string => {
 
 // Type for the model engine - update to include getModelId
 interface ModelEngine {
-  chat: (params: {
-    messages: ChatMessage[];
-    temperature: number;
-    max_tokens: number;
-    repetition_penalty: number;
-  }) => Promise<ChatCompletionChunk>;
+  chat: {
+    completions: {
+      create: (params: {
+        messages: ChatMessage[];
+        temperature?: number;
+        max_tokens?: number;
+        repetition_penalty?: number;
+        stream?: boolean;
+        stream_options?: { include_usage: boolean };
+      }) => Promise<ChatCompletionChunk>;
+    };
+  };
   save: () => Promise<any>;
   close?: () => void;
   getModelId?: () => Promise<string>;
@@ -772,24 +771,32 @@ export const useLLMService = (options = defaultModelOptions) => {
       systemPrompt: string | null,
       messages: Message[]
     ): Promise<string> => {
-      try {
-        if (!model || !isModelLoaded) {
-          throw new Error("Model not loaded");
-        }
+      if (!model || !isModelLoaded) {
+        throw new Error("Model not loaded");
+      }
 
-        setIsInferring(true);
+      setIsInferring(true);
 
-        const formattedMessages: ChatMessage[] = [];
+      const formattedMessages: ChatMessage[] = [];
 
-        if (systemPrompt) {
-          formattedMessages.push({ role: "system", content: systemPrompt });
-        }
+      if (systemPrompt) {
+        formattedMessages.push({ role: "system", content: systemPrompt });
+      }
 
-        messages.forEach((msg: Message) => {
-          formattedMessages.push({ role: msg.role, content: msg.content });
-        });
+      messages.forEach((msg: Message) => {
+        formattedMessages.push({ role: msg.role, content: msg.content });
+      });
 
-        const response = await model.chat({
+      // Add debugging statements to log the structure of the engine object
+      console.log("Engine object:", model);
+
+      if (
+        model &&
+        model.chat &&
+        model.chat.completions &&
+        typeof model.chat.completions.create === "function"
+      ) {
+        const response = await model.chat.completions.create({
           messages: formattedMessages,
           temperature: modelOptions.temperature,
           max_tokens: modelOptions.maxTokens,
@@ -833,17 +840,25 @@ export const useLLMService = (options = defaultModelOptions) => {
           console.error("Error parsing model response:", error);
           return "I encountered an error processing the response. Please try again.";
         }
-      } catch (err: unknown) {
-        console.error("Inference error:", err);
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to generate response";
-        setError(errorMessage);
+      } else {
+        console.error(
+          "The engine object does not have the expected structure."
+        );
         setIsInferring(false);
-        throw err;
+        throw new Error(
+          "The engine object does not have the expected structure."
+        );
       }
     },
     [model, isModelLoaded, modelOptions]
   );
+
+  // Ensure the model is loaded before attempting inference
+  useEffect(() => {
+    if (!isModelLoaded && !isDownloading) {
+      loadModel();
+    }
+  }, [isModelLoaded, isDownloading, loadModel]);
 
   useEffect(() => {
     return () => {
