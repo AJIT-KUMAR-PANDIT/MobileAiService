@@ -18,9 +18,14 @@ export default defineConfig({
   ],
   server: {
     allowedHosts: [
-      "2cc4-2409-408a-2d4b-37af-8d49-a97e-3241-fd73.ngrok-free.app",
+      "0e7e-2401-4900-1ca9-6817-f48a-e4f2-cb68-955.ngrok-free.app",
       "ngrok-free.app", // Wildcard for all ngrok subdomains
     ],
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+    },
   },
   resolve: {
     alias: {

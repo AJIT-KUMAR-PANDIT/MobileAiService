@@ -7,7 +7,7 @@
  */
 
 // Base domain for all API requests - can be overridden by environment variables
-export const IOT_BASE_DOMAIN = import.meta.env.VITE_IOT_BASE_URL || 'https://nakprciotsystemslabs.local';
+export const IOT_BASE_DOMAIN = import.meta.env.VITE_IOT_BASE_URL || 'http://localhost:3001';
 
 // Debug mode - when true, all API requests will be logged to console
 export const DEBUG_API_REQUESTS = true;
@@ -118,13 +118,13 @@ function getConsoleStyle(): { color: string, background: string, device: string 
   if (isCapacitorApp()) {
     return {
       color: '#ffffff',
-      background: '#8a2be2', // Capacitor - purple background
+      background: '#1e90ff', // Changed to blue for Capacitor
       device: 'MOBILE'
     };
   } else {
     return {
       color: '#ffffff',
-      background: '#2e8b57', // Web - green background
+      background: '#1e90ff', // Changed to blue for Web
       device: 'WEB'
     };
   }
@@ -141,30 +141,30 @@ export function logApiRequest(method: string, url: string, data?: any): void {
     const style = getConsoleStyle();
     const timestamp = new Date().toISOString();
     
-    // Always log to console with high visibility
+    // Always log to console with high visibility (blue background)
     console.log(
       `%c [${style.device}] [${timestamp}] 📡 IOT REQUEST: ${method} ${url} %c`,
       `background: ${style.background}; color: ${style.color}; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
       'background: transparent;'
     );
     
-    // Log detailed data if available
+    // Log detailed data if available (with blue styling)
     if (data) {
       console.log(
         '%c [REQUEST PAYLOAD] %c',
-        `background: #555; color: #fff; padding: 2px 4px; border-radius: 2px;`,
+        `background: #0078d7; color: #fff; padding: 2px 4px; border-radius: 2px;`,
         'background: transparent;',
         data
       );
     }
     
-    // Special case for IoT domain
-    if (url.includes('nakprciotsystemslabs.local')) {
+    // Special case for IoT domain (with blue styling)
+    if (url.includes('nakprciotsystemslabs.local') || url.includes('iotsystemslabs.local') || url.includes('localhost:3001')) {
       console.log(
         '%c [IOT SYSTEMS API CALL] %c',
-        'background: #ff5722; color: white; padding: 2px 4px; border-radius: 2px;',
+        'background: #4169e1; color: white; padding: 2px 4px; border-radius: 2px;',
         'background: transparent;',
-        `Target: iotsystemslabs.local`
+        `Target: ${url.includes('localhost') ? 'localhost:3001' : 'iotsystemslabs.local'}`
       );
     }
   }
@@ -190,28 +190,28 @@ export function logApiResponse(url: string, response?: any, error?: any): void {
         error
       );
     } else {
-      // Log successful responses with custom styling
+      // Log successful responses with blue styling
       console.log(
         `%c [${style.device}] [${timestamp}] ✅ IOT RESPONSE: ${url} %c`,
-        `background: ${style.background}; color: ${style.color}; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
+        `background: #1e90ff; color: ${style.color}; font-weight: bold; padding: 3px 5px; border-radius: 3px;`,
         'background: transparent;'
       );
       
-      // Log detailed response data
+      // Log detailed response data (with blue styling)
       console.log(
         '%c [RESPONSE DATA] %c',
-        `background: #555; color: #fff; padding: 2px 4px; border-radius: 2px;`,
+        `background: #0078d7; color: #fff; padding: 2px 4px; border-radius: 2px;`,
         'background: transparent;',
         response
       );
       
-      // Special case for IoT domain
-      if (url.includes('nakprciotsystemslabs.local')) {
+      // Special case for IoT domain (with blue styling)
+      if (url.includes('nakprciotsystemslabs.local') || url.includes('iotsystemslabs.local') || url.includes('localhost:3001')) {
         console.log(
           '%c [IOT SYSTEMS RESPONSE] %c',
-          'background: #4caf50; color: white; padding: 2px 4px; border-radius: 2px;',
+          'background: #4169e1; color: white; padding: 2px 4px; border-radius: 2px;',
           'background: transparent;',
-          `Source: iotsystemslabs.local`
+          `Source: ${url.includes('localhost') ? 'localhost:3001' : 'iotsystemslabs.local'}`
         );
       }
     }
