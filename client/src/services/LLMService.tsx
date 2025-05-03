@@ -318,7 +318,7 @@ const checkModelExists = async (modelId: string): Promise<boolean> => {
 };
 
 // Save model data to IndexedDB with improved quota handling
-const saveModelToIndexedDB = async (
+export const saveModelToIndexedDB = async (
   modelId: string,
   modelData: any
 ): Promise<boolean> => {
@@ -492,6 +492,8 @@ export const useLLMService = (options = defaultModelOptions) => {
   const [modelName, setModelName] = useState<string>("");
   const [isInferring, setIsInferring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Function to move all files from cache to IndexedDB
 
   // Load model with WebLLM
   const loadModel = useCallback(async (): Promise<ModelEngine | null> => {
