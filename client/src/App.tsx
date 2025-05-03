@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import { useEffect, useState } from "react";
+import { syncCacheToIndexDbOnStartup } from "./utils/cacheToIndexDb";
 
 function Router() {
   return (
@@ -17,28 +18,37 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    // Run the cache to IndexedDB sync when the app starts
+    syncCacheToIndexDbOnStartup();
+
+    // ... other initialization code
+  }, []);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  
+
   // Check system preference for dark mode
   useEffect(() => {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
       setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     }
-    
+
     // Listen for changes in color scheme preference
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (e: MediaQueryListEvent) => {
       setIsDarkMode(e.matches);
       if (e.matches) {
-        document.documentElement.classList.add('dark');
+        document.documentElement.classList.add("dark");
       } else {
-        document.documentElement.classList.remove('dark');
+        document.documentElement.classList.remove("dark");
       }
     };
-    
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   return (
