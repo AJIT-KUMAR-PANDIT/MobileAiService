@@ -1,6 +1,5 @@
-import { FC, useEffect, useState } from "react";
+import { FC } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Waveform } from "@/utils/waveform";
 
 interface VoiceUIProps {
   isActive: boolean;
@@ -21,36 +20,28 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   isInferring,
   onRecordToggle,
 }) => {
-  // Determine button state classes based on listening state
   const buttonStateClasses = isListening
-    ? "bg-error animate-pulse"
+    ? "bg-red-500 animate-pulse"
     : isSpeaking
-    ? "bg-accent"
-    : "bg-gradient-to-r from-primary to-accent";
-
-  // Animation variants
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
-  };
-
-  const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1 },
-  };
+    ? "bg-blue-500"
+    : "bg-gradient-to-r from-purple-500 to-blue-500";
 
   return (
     <motion.div
       className="flex-1 flex flex-col items-center justify-center p-6"
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
     >
-      {/* AI Visualization */}
-      <motion.div className="relative w-48 h-48 mb-6" variants={itemVariants}>
-        {/* Outer Rings */}
+      <motion.div
+        className="relative w-48 h-48 mb-6"
+        initial={{ scale: 0.8 }}
+        animate={{ scale: 1 }}
+      >
         <motion.div
-          className="absolute inset-0 rounded-full bg-primary bg-opacity-10"
+          className={`absolute inset-0 rounded-full ${
+            isListening || isSpeaking ? "bg-opacity-20" : "bg-opacity-10"
+          } bg-white`}
           animate={{
             scale: [1, 1.1, 1],
             opacity: [0.5, 0.7, 0.5],
@@ -58,98 +49,54 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           transition={{
             repeat: Infinity,
             duration: 3,
-            ease: "easeInOut",
           }}
         />
 
         <motion.div
-          className="absolute inset-4 rounded-full bg-primary bg-opacity-15"
-          animate={{
-            scale: [1, 1.05, 1],
-            opacity: [0.6, 0.8, 0.6],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 2,
-            ease: "easeInOut",
-          }}
-        />
-
-        {/* Core Circle */}
-        <motion.div
-          className="absolute inset-8 rounded-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-primary to-accent shadow-lg"
-          animate={{
-            y: [0, -8, 0],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 4,
-            ease: "easeInOut",
+          className="absolute inset-8 rounded-full flex items-center justify-center"
+          style={{
+            background: "linear-gradient(45deg, #6366f1, #8b5cf6)",
           }}
         >
-          {/* Waveform Visualization */}
-          <AnimatePresence>
-            {(isListening || isSpeaking || isInferring) && (
-              <Waveform isListening={isListening} isSpeaking={isSpeaking} />
-            )}
-          </AnimatePresence>
+          {(isListening || isSpeaking) && (
+            <motion.div
+              className="w-full h-full flex items-center justify-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            >
+              <div className="flex space-x-1">
+                {[...Array(5)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="w-1 bg-white"
+                    animate={{
+                      height: [10, 30, 10],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 1,
+                      delay: i * 0.1,
+                    }}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          )}
         </motion.div>
-
-        {/* Particle Effects */}
-        <motion.div
-          className="absolute top-4 left-10 w-2 h-2 bg-blue-400 rounded-full opacity-60"
-          animate={{
-            x: [0, 5, 0],
-            y: [0, -5, 0],
-            opacity: [0.4, 0.6, 0.4],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 3.5,
-            ease: "easeInOut",
-          }}
-        />
-
-        <motion.div
-          className="absolute top-12 right-8 w-3 h-3 bg-accent rounded-full opacity-40"
-          animate={{
-            x: [0, -5, 0],
-            y: [0, 5, 0],
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 4.2,
-            ease: "easeInOut",
-          }}
-        />
-
-        <motion.div
-          className="absolute bottom-10 left-16 w-4 h-4 bg-green-400 rounded-full opacity-30"
-          animate={{
-            x: [0, 5, 0],
-            y: [0, 5, 0],
-            opacity: [0.2, 0.4, 0.2],
-          }}
-          transition={{
-            repeat: Infinity,
-            duration: 5,
-            ease: "easeInOut",
-          }}
-        />
       </motion.div>
 
-      {/* Message Display */}
-      <motion.div className="text-center mb-8" variants={itemVariants}>
-        <h2 className="text-white text-2xl font-tech mb-2">{message}</h2>
-        <p className="text-gray-400 text-sm">{instruction}</p>
+      <motion.div
+        className="text-center mb-8"
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+      >
+        <h2 className="text-white text-2xl font-bold mb-2">{message}</h2>
+        <p className="text-gray-300 text-sm">{instruction}</p>
       </motion.div>
 
-      {/* Microphone Button */}
       <motion.button
         onClick={onRecordToggle}
-        className={`w-16 h-16 rounded-full ${buttonStateClasses} text-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform duration-300 ease-in-out`}
-        variants={itemVariants}
+        className={`w-16 h-16 rounded-full ${buttonStateClasses} text-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform duration-300`}
         whileTap={{ scale: 0.9 }}
       >
         <svg

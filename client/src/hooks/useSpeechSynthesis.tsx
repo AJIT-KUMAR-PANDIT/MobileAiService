@@ -1,119 +1,80 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
+import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
-interface UseSpeechSynthesisReturn {
-  speak: (text: string) => void;
-  cancel: () => void;
-  speaking: boolean;
-  supported: boolean;
-  voices: SpeechSynthesisVoice[];
-  setVoice: (voice: SpeechSynthesisVoice) => void;
+interface Voice {
+  name: string;
+  lang: string;
 }
 
-const useSpeechSynthesis = (): UseSpeechSynthesisReturn => {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [currentVoice, setCurrentVoice] = useState<SpeechSynthesisVoice | null>(null);
-  const [speaking, setSpeaking] = useState(false);
+const useSpeechSynthesis = () => {
   const [supported, setSupported] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [voices, setVoices] = useState<Voice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (window.speechSynthesis) {
       setSupported(true);
-
-      // Set up event handlers for speech synthesis
-      const synth = window.speechSynthesis;
-      
-      const updateVoices = () => {
-        const availableVoices = synth.getVoices();
-        setVoices(availableVoices);
-        
-        // Find a female English voice, or any English voice, or fall back to first voice
-        const femaleEnglishVoice = availableVoices.find(
-          voice => voice.lang.includes('en-') && voice.name.toLowerCase().includes('female')
+      // Load available voices
+      const loadVoices = () => {
+        const availableVoices = window.speechSynthesis.getVoices();
+        setVoices(
+          availableVoices.map((voice) => ({
+            name: voice.name,
+            lang: voice.lang,
+          }))
         );
-        const anyFemaleVoice = femaleEnglishVoice || availableVoices.find(
-          voice => voice.name.toLowerCase().includes('female')
-        );
-        const englishVoice = anyFemaleVoice || availableVoices.find(
-          voice => voice.lang.includes('en-')
-        );
-        
-        // Log available voices to help with debugging
-        console.log('Available voices:', availableVoices.map(v => `${v.name} (${v.lang})`));
-        
-        setCurrentVoice(englishVoice || (availableVoices.length > 0 ? availableVoices[0] : null));
       };
-      
-      // Chrome loads voices asynchronously
-      if (synth.onvoiceschanged !== undefined) {
-        synth.onvoiceschanged = updateVoices;
+
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  const speak = useCallback(
+    async (text: string) => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          setSpeaking(true);
+          await TextToSpeech.speak({
+            text,
+            lang: selectedVoice?.lang || "en-US",
+            rate: 1.0,
+            pitch: 1.0,
+            volume: 1.0,
+          });
+          setSpeaking(false);
+        } catch (error) {
+          console.error("Mobile TTS error:", error);
+          setSpeaking(false);
+        }
+      } else if (supported && window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (selectedVoice) {
+          const systemVoice = window.speechSynthesis
+            .getVoices()
+            .find((v) => v.name === selectedVoice.name);
+          if (systemVoice) utterance.voice = systemVoice;
+        }
+        utterance.onstart = () => setSpeaking(true);
+        utterance.onend = () => setSpeaking(false);
+        utterance.onerror = (event) => {
+          console.error("Web TTS error:", event);
+          setSpeaking(false);
+        };
+        window.speechSynthesis.speak(utterance);
       }
-      
-      // Initial voices load
-      updateVoices();
-      
-      // Set up speech events
-      const handleSpeechStart = () => setSpeaking(true);
-      const handleSpeechEnd = () => setSpeaking(false);
-      const handleSpeechError = (e: any) => {
-        console.error('Speech synthesis error:', e);
-        setSpeaking(false);
-      };
-      
-      // Clean up event listeners
-      return () => {
-        synth.cancel();
-        // Remove event listeners if needed in the future
-      };
-    }
-  }, []);
-
-  const speak = useCallback((text: string) => {
-    if (!supported) return;
-    
-    const synth = window.speechSynthesis;
-    
-    // Cancel any ongoing speech
-    if (speaking) {
-      synth.cancel();
-    }
-    
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    if (currentVoice) {
-      utterance.voice = currentVoice;
-    }
-    
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
-    
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = (e) => {
-      console.error('Speech synthesis error:', e);
-      setSpeaking(false);
-    };
-    
-    synth.speak(utterance);
-  }, [supported, speaking, currentVoice]);
-
-  const cancel = useCallback(() => {
-    if (!supported) return;
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
-  }, [supported]);
-
-  const setVoice = useCallback((voice: SpeechSynthesisVoice) => {
-    setCurrentVoice(voice);
-  }, []);
+    },
+    [supported, selectedVoice]
+  );
 
   return {
     speak,
-    cancel,
-    speaking,
     supported,
+    speaking,
     voices,
-    setVoice,
+    setVoice: setSelectedVoice,
   };
 };
 
