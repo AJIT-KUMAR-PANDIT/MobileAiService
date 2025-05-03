@@ -47,6 +47,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   } | null>(null);
   const [isNormalChatMode, setIsNormalChatMode] = useState(false);
   const [isDeviceControlEnabled, setIsDeviceControlEnabled] = useState(true);
+  const [isConversationActive, setIsConversationActive] = useState(false); // Added state
 
   // Use our custom offline status hook
   const { isOffline } = useOfflineStatus();
@@ -176,17 +177,28 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
   // Start wake word detection when overlay is visible
   useEffect(() => {
-    if (
-      isVisible &&
-      isWakeWordMode &&
-      mode === "voice" &&
-      !isWakeWordListening &&
-      !listening &&
-      !speaking
-    ) {
-      console.log("Starting wake word detection for 'Luna'...");
-      startWakeWordListening();
-      setInstruction("Say 'Luna' or tap the microphone");
+    const startWakeWordDetection = () => {
+      if (
+        isVisible &&
+        isWakeWordMode &&
+        mode === "voice" &&
+        !isWakeWordListening &&
+        !listening &&
+        !speaking &&
+        !isInferring
+      ) {
+        console.log("Starting wake word detection for 'Luna'...");
+        startWakeWordListening();
+        setInstruction("Say 'Luna' or tap the microphone");
+      }
+    };
+
+    // Initial start
+    startWakeWordDetection();
+
+    // Restart detection when other processes finish
+    if (!listening && !speaking && !isInferring) {
+      startWakeWordDetection();
     }
 
     return () => {
@@ -201,6 +213,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     isWakeWordListening,
     listening,
     speaking,
+    isInferring,
     startWakeWordListening,
     stopWakeWordListening,
   ]);
@@ -235,16 +248,67 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetDetection,
     wakeupSoundUrl,
   ]);
-
+  const LISTENING_DURATION = 15000; // 15 seconds
   // Process transcript when available
   useEffect(() => {
+    let listenTimeoutTimer: NodeJS.Timeout;
+    let lastActivityTime = Date.now();
+
+    const checkInactivity = () => {
+      const currentTime = Date.now();
+      const inactiveTime = currentTime - lastActivityTime;
+
+      if (inactiveTime >= LISTENING_DURATION) {
+        console.log("No activity detected for 15 seconds, stopping listening");
+        stopListening();
+        setInstruction("Say 'Luna' or tap the microphone");
+
+        // Restart wake word detection if enabled
+        if (isWakeWordMode && !isWakeWordListening) {
+          startWakeWordListening();
+        }
+        return true;
+      }
+      return false;
+    };
+
+    if (listening) {
+      // Reset activity timer when speech is detected
+      const resetTimer = () => {
+        lastActivityTime = Date.now();
+      };
+
+      // Check for inactivity every second
+      listenTimeoutTimer = setInterval(() => {
+        if (checkInactivity()) {
+          clearInterval(listenTimeoutTimer);
+        }
+      }, 1000);
+
+      // Add speech detection listener
+      window.addEventListener("speech", resetTimer);
+
+      return () => {
+        clearInterval(listenTimeoutTimer);
+        window.removeEventListener("speech", resetTimer);
+      };
+    }
+
     if (transcript && !listening && !isInferring) {
       console.log("Processing transcript:", transcript);
       const currentTranscript = transcript;
       resetTranscript();
       handleVoiceInput(currentTranscript);
     }
-  }, [transcript, listening, isInferring, resetTranscript]);
+  }, [
+    transcript,
+    listening,
+    speaking,
+    isInferring,
+    resetTranscript,
+    startListening,
+    stopListening,
+  ]);
 
   // Restart wake word detection after response
   useEffect(() => {
@@ -300,6 +364,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   };
 
   const handleVoiceInput = async (text: string) => {
+    setIsConversationActive(true); // Set conversation active
     if (!text.trim()) return;
     console.log("Voice input received:", text);
     setInstruction("Processing...");
@@ -564,11 +629,22 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           setIsTyping(false);
         } else {
           setAIResponse(response);
-          setInstruction("Tap the microphone to speak again");
+          setInstruction("Listening for your response...");
+          await speak(response);
 
-          // Use text-to-speech for the response
-          console.log("Speaking response:", response);
-          speak(response);
+          // After AI finishes speaking, automatically listen for user response
+          setTimeout(() => {
+            if (!listening && !speaking) {
+              // Play wake sound
+              const audio = new Audio(wakeupSoundUrl);
+              audio
+                .play()
+                .catch((e) => console.error("Failed to play wake sound:", e));
+
+              startListening();
+              setInstruction("Luna is listening...");
+            }
+          }, 1000);
         }
       } catch (inferenceError) {
         console.error("Inference error:", inferenceError);
@@ -598,6 +674,8 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       setAIResponse(fallbackMessage);
       setInstruction("Tap the microphone to speak again");
       speak(fallbackMessage);
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -911,10 +989,13 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       {isVisible && (
         <motion.div
           className="fixed inset-0 z-50 flex items-end justify-center pb-4 sm:items-center sm:p-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{
+            duration: 0.4,
+            ease: [0.4, 0, 0.2, 1],
+          }}
         >
           <motion.div
             className="absolute inset-0 bg-darkBg bg-opacity-60 backdrop-blur-sm"
@@ -959,8 +1040,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     </svg>
                   </div>
                   <div className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-darkBg"></div>
-                </div>
-
+                </div>{" "}
                 {/* AI Status */}
                 <div>
                   <h3 className="text-white font-semibold font-tech">Luna</h3>
@@ -1001,7 +1081,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     setIsNormalChatMode(isDeviceControlEnabled); // Set to opposite state
                   }}
                   className={`relative p-2 rounded-full hover:bg-gray-700 transition-colors ${
-                    isDeviceControlEnabled ? "text-blue-400" : "text-yellow-400"
+                    isDeviceControlEnabled ? "text-blue400" : "text-yellow-400"
                   } hover:text-white`}
                   title={
                     isDeviceControlEnabled
