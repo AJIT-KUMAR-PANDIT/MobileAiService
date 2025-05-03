@@ -175,6 +175,24 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     }
   }, [isVisible, isModelLoaded, isDownloading, loadModel]);
 
+  // Initial conversation when overlay opens
+  useEffect(() => {
+    if (isVisible && !isConversationActive) {
+      const initialGreetings = [
+        "How can I assist you today?",
+        "What can I help you with?",
+        "What's on your mind?",
+        "I'm here to help. What do you need?",
+        "How may I be of service?",
+      ];
+      const greeting =
+        initialGreetings[Math.floor(Math.random() * initialGreetings.length)];
+      setAIResponse(greeting);
+      speak(greeting);
+      setIsConversationActive(true);
+    }
+  }, [isVisible, isConversationActive, speak]);
+
   // Start wake word detection when overlay is visible
   useEffect(() => {
     const startWakeWordDetection = () => {
@@ -193,8 +211,8 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       }
     };
 
-    // Initial start
-    startWakeWordDetection();
+    // Initial start with delay to allow setup
+    setTimeout(startWakeWordDetection, 1000);
 
     // Restart detection when other processes finish
     if (!listening && !speaking && !isInferring) {
@@ -633,18 +651,68 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           await speak(response);
 
           // After AI finishes speaking, automatically listen for user response
-          setTimeout(() => {
+          setTimeout(async () => {
             if (!listening && !speaking) {
               // Play wake sound
               const audio = new Audio(wakeupSoundUrl);
-              audio
+              await audio
                 .play()
                 .catch((e) => console.error("Failed to play wake sound:", e));
 
-              startListening();
-              setInstruction("Luna is listening...");
+              // Wait for sound to finish before starting listening
+              await new Promise((resolve) => setTimeout(resolve, 500));
+
+              try {
+                await startListening();
+                setInstruction("Luna is listening...");
+                let lastActivityTime = Date.now();
+                let userHasSpoken = false;
+
+                // Create speech detection event
+                const speechEvent = new Event("speech");
+
+                // Reset activity time when speech is detected
+                const handleSpeech = () => {
+                  lastActivityTime = Date.now();
+                  userHasSpoken = true;
+                };
+
+                window.addEventListener("speech", handleSpeech);
+
+                // Set timeout for 15 seconds of silence with periodic checks
+                const silenceTimeout = setInterval(() => {
+                  const currentTime = Date.now();
+                  const inactiveTime = currentTime - lastActivityTime;
+
+                  if (inactiveTime >= 15000 && listening) {
+                    console.log(
+                      "No speech detected for 15 seconds, resetting..."
+                    );
+                    window.removeEventListener("speech", handleSpeech);
+                    clearInterval(silenceTimeout);
+                    stopListening();
+                    setInstruction("Say 'Luna' or tap the microphone");
+
+                    // Restart wake word detection after a delay
+                    if (isWakeWordMode && !isWakeWordListening) {
+                      setTimeout(() => startWakeWordListening(), 1000);
+                    }
+                  }
+                }, 1000);
+
+                // Clean up when component unmounts or listening stops
+                return () => {
+                  window.removeEventListener("speech", handleSpeech);
+                  clearInterval(silenceTimeout);
+                };
+              } catch (error) {
+                console.error("Error starting listening:", error);
+                setInstruction(
+                  "Microphone access error. Please check permissions."
+                );
+              }
             }
-          }, 1000);
+          }, 100); // Reduced initial delay
         }
       } catch (inferenceError) {
         console.error("Inference error:", inferenceError);
@@ -950,12 +1018,12 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       stopListening();
       setInstruction("Processing...");
     } else {
-      // If wake word detection is active, disable it first
-      if (isWakeWordListening) {
-        stopWakeWordListening();
+      // Allow both wake word and direct listening to work together
+      if (!isWakeWordListening) {
+        startWakeWordListening();
       }
 
-      // Start direct listening
+      // Start direct listening alongside wake word detection
       startListening();
       setInstruction("Luna is listening...");
 

@@ -49,15 +49,24 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
         recognitionRef.current = new SpeechRecognitionConstructor();
         const recognition = recognitionRef.current;
 
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = true;
+        recognition.maxAlternatives = 5;
         recognition.lang = "en-US";
 
         recognition.onstart = () => setListening(true);
         recognition.onend = () => setListening(false);
         recognition.onerror = (event: any) => {
-          console.error("Web speech recognition error:", event);
+          if (event.error === "not-allowed") {
+            console.error("Speech recognition permission denied");
+          } else if (event.error === "aborted") {
+            // Ignore aborted errors as they're expected during normal operation
+            return;
+          } else {
+            console.error("Web speech recognition error:", event.error);
+          }
           setListening(false);
+          recognition.stop();
         };
         recognition.onresult = (event: any) => {
           const current = event.resultIndex;

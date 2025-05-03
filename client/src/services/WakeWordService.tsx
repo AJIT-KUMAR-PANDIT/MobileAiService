@@ -58,11 +58,11 @@ declare global {
 }
 
 const WAKE_WORD = "luna";
-const CONFIDENCE_THRESHOLD = 0.1; // Lower threshold for better detection
-const RECOGNITION_INTERVAL = 300; // Shorter interval for more responsive detection
-const WAKE_WORD_TIMEOUT = 10000; // Longer timeout for better recovery
-const RETRY_DELAY = 2000; // Longer delay between retries
-const MAX_RETRIES = 5; // More retries
+const CONFIDENCE_THRESHOLD = 0.001; // Extremely low threshold for better detection
+const RECOGNITION_INTERVAL = 300; // Shorter interval for faster response
+const WAKE_WORD_TIMEOUT = 20000; // Extended timeout for better chance of detection
+const RETRY_DELAY = 3000; // Increased delay between retries
+const MAX_RETRIES = 10; // Increased retries
 const LISTENING_DURATION = 15000; // 15 seconds listening duration
 
 const useWakeWordDetection = () => {
@@ -178,8 +178,10 @@ const useWakeWordDetection = () => {
 
           recognition.onend = () => {
             if (isListeningRef.current) {
+              // Only restart if we're still meant to be listening
               setTimeout(() => {
-                if (isListeningRef.current) {
+                if (isListeningRef.current && !recognitionRef.current) {
+                  retryCountRef.current = 0; // Reset retries on clean restart
                   startRecognition();
                 }
               }, RECOGNITION_INTERVAL);
@@ -189,16 +191,33 @@ const useWakeWordDetection = () => {
           recognition.onerror = (event: any) => {
             console.error("Recognition error:", event.error);
             if (isListeningRef.current) {
-              retryCountRef.current++;
+              // Only increment retries for non-aborted errors
+              if (event.error !== "aborted") {
+                retryCountRef.current++;
+              }
+
               if (retryCountRef.current <= MAX_RETRIES) {
+                // Exponential backoff for retry delay
+                const backoffDelay =
+                  RETRY_DELAY * Math.pow(1.5, retryCountRef.current - 1);
+                setTimeout(() => {
+                  if (isListeningRef.current) {
+                    console.log(
+                      `Retrying recognition (attempt ${retryCountRef.current})`
+                    );
+                    startRecognition();
+                  }
+                }, backoffDelay);
+              } else {
+                console.error("Max retries exceeded, restarting recognition");
+                retryCountRef.current = 0;
+                stopListening();
+                // Attempt to restart after a longer delay
                 setTimeout(() => {
                   if (isListeningRef.current) {
                     startRecognition();
                   }
-                }, RETRY_DELAY);
-              } else {
-                console.error("Max retries exceeded, stopping recognition");
-                stopListening();
+                }, RETRY_DELAY * 2);
               }
             }
           };
