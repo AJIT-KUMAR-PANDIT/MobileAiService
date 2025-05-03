@@ -1,13 +1,9 @@
-import { FC, useEffect, useState, useRef } from "react";
+import { FC, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { VoiceUI } from "./VoiceUI";
 import { ChatUI } from "./ChatUI";
 import { ModelDownloadStatus } from "./ModelDownloadStatus";
 import { ModelSelector } from "./ModelSelector";
-import { ThemeCustomizer } from "./ThemeCustomizer";
-import { ConversationHistory } from "./ConversationHistory";
-import { OfflineBanner } from "./OfflineBanner";
-import WelcomeGuide from "./WelcomeGuide";
 import { useLLMService } from "@/services/LLMService";
 import { Message, ModelOptions } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
@@ -15,20 +11,9 @@ import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import useWakeWordDetection from "@/services/WakeWordService";
 import { processVoiceCommand, CommandType } from "@/utils/voiceCommands";
-import {
-  saveConversation,
-  getConversations,
-} from "@/utils/conversationHistory";
+import { saveConversation } from "@/utils/conversationHistory";
 import { useTheme } from "@/contexts/ThemeContext";
 import prompts from "@/data/prompts.json";
-import { prebuiltAppConfig } from "@mlc-ai/web-llm";
-import {
-  isSearchRequest,
-  performOnlineSearch,
-} from "@/services/OnlineSearchService";
-import logger, { LogCategory } from "@/utils/logger";
-
-// Import sound generator utility
 import { generateWakeupSound } from "@/utils/generateWakeupSound";
 
 // Create a placeholder URL for the wakeup sound
@@ -55,8 +40,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   );
   const [isWakeWordMode, setIsWakeWordMode] = useState(true);
   const [wakeupSoundUrl, setWakeupSoundUrl] = useState(DEFAULT_SOUND_URL);
-  const [showHistorySidebar, setShowHistorySidebar] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [activeTimer, setActiveTimer] = useState<{
     id: string;
     endTime: number;
@@ -164,34 +147,15 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     startListening: startWakeWordListening,
     stopListening: stopWakeWordListening,
     resetDetection,
-    wakeWordConfidence,
   } = useWakeWordDetection();
 
   // Auto-load model when overlay becomes visible
   useEffect(() => {
     if (isVisible && !isModelLoaded && !isDownloading) {
       console.log("Auto-loading AI model...");
-
-      // Log available WebLLM models
-      if (prebuiltAppConfig && prebuiltAppConfig.model_list) {
-        console.log("Available WebLLM models:", prebuiltAppConfig.model_list);
-        console.log("Model IDs:");
-        prebuiltAppConfig.model_list.forEach((model) => {
-          console.log(`- ${model.model_id} (URL: ${model.model})`);
-        });
-      } else {
-        console.log("WebLLM model list not available");
-      }
-
       loadModel()
         .then(() => {
           console.log("Model loaded successfully");
-          // Verify model has chat method
-          if (inference) {
-            console.log("Inference function is available");
-          } else {
-            console.error("Inference function is not available");
-          }
         })
         .catch((err) => {
           console.error("Failed to load model:", err);
@@ -274,11 +238,13 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
   // Process transcript when available
   useEffect(() => {
-    if (transcript && !isInferring) {
-      handleVoiceInput(transcript);
+    if (transcript && !listening && !isInferring) {
+      console.log("Processing transcript:", transcript);
+      const currentTranscript = transcript;
       resetTranscript();
+      handleVoiceInput(currentTranscript);
     }
-  }, [transcript, isInferring, resetTranscript]);
+  }, [transcript, listening, isInferring, resetTranscript]);
 
   // Restart wake word detection after response
   useEffect(() => {
@@ -335,7 +301,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
   const handleVoiceInput = async (text: string) => {
     if (!text.trim()) return;
-
+    console.log("Voice input received:", text);
     setInstruction("Processing...");
 
     try {
@@ -350,6 +316,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
             "I'm having trouble loading my AI model. Please try again in a moment."
           );
           setInstruction("Tap the microphone to speak again");
+          speak(
+            "I'm having trouble loading my AI model. Please try again in a moment."
+          );
           return;
         }
       }
@@ -570,7 +539,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         ? prompts.normalConversationPrompt // Use regular conversation prompt
         : prompts.deviceControlPrompt; // Use device control prompt by default
 
-      const messages = [...chatMessages, userMessage];
+      const messages = [userMessage]; // For voice mode, just use the current message
 
       console.log(
         "Sending to LLM for inference with system prompt:",
@@ -589,74 +558,46 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           content: response,
         };
 
-        // Update conversation
-        const updatedMessages = [
-          ...chatMessages,
-          userMessage,
-          assistantMessage,
-        ];
-
-        // Save conversation history (only if meaningful interaction occurred)
-        if (updatedMessages.length > 3) {
-          saveConversation(updatedMessages, modelOptions.modelId);
-        }
-
         // Update UI based on mode
         if (mode === "chat") {
-          setChatMessages(updatedMessages);
+          setChatMessages((prev) => [...prev, userMessage, assistantMessage]);
           setIsTyping(false);
         } else {
           setAIResponse(response);
           setInstruction("Tap the microphone to speak again");
 
           // Use text-to-speech for the response
+          console.log("Speaking response:", response);
           speak(response);
         }
       } catch (inferenceError) {
         console.error("Inference error:", inferenceError);
+        const errorMessage =
+          "I encountered an error processing your request. Please try again.";
+
         if (mode === "chat") {
           setChatMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content:
-                "I encountered an error processing your request. This might be due to a technical issue with my AI model. Please try again or try a different question.",
+              content: errorMessage,
             },
           ]);
           setIsTyping(false);
         } else {
-          setAIResponse(
-            "I encountered an error processing your request. This might be due to a technical issue with my AI model. Please try again or try a different question."
-          );
+          setAIResponse(errorMessage);
           setInstruction("Tap the microphone to speak again");
-          speak(
-            "I encountered an error processing your request. Please try again."
-          );
+          speak(errorMessage);
         }
       }
     } catch (error) {
       console.error("Error processing voice input:", error);
+      const fallbackMessage =
+        "I'm sorry, I couldn't process that request. Please try again.";
 
-      // Offline fallback response
-      if (isOffline) {
-        const offlineResponse =
-          "I'm currently in offline mode and can't process complex requests. I can still help with basic commands and previously saved responses.";
-
-        if (mode === "chat") {
-          setChatMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: offlineResponse },
-          ]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(offlineResponse);
-          setInstruction("Tap the microphone to speak again");
-          speak(offlineResponse);
-        }
-      } else {
-        setInstruction("Something went wrong. Please try again.");
-        setIsTyping(false);
-      }
+      setAIResponse(fallbackMessage);
+      setInstruction("Tap the microphone to speak again");
+      speak(fallbackMessage);
     }
   };
 
@@ -853,89 +794,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         setChatMessages((prev) => [...prev, assistantMessage]);
         setIsTyping(false);
         return;
-      }
-
-      // Check if this is an online search request and we have internet
-      if (isSearchRequest(message) && !isOffline) {
-        logger.info(
-          LogCategory.SEARCH,
-          `Detected search request: "${message}"`
-        );
-
-        try {
-          // Show a processing message
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: "Searching online for the most current information...",
-            },
-          ]);
-
-          // Perform the online search
-          const searchResult = await performOnlineSearch({
-            query: message,
-            isOnline: !isOffline,
-            systemPrompt:
-              "You are a helpful assistant providing accurate and current information from online sources. Be helpful, concise, and informative.",
-          });
-
-          // Create the assistant response with attribution
-          const searchResponse =
-            searchResult.result +
-            (searchResult.source === "online"
-              ? "\n\n*Information retrieved from online sources.*"
-              : "\n\n*Answering from my knowledge base as online search couldn't be completed.*");
-
-          // Update chat with search results (replace the temporary message)
-          setChatMessages((prev) => {
-            const newMessages = [...prev];
-            // Remove the last message (which was the temporary one)
-            newMessages.pop();
-            // Add the new message with search results
-            return [
-              ...newMessages,
-              { role: "assistant", content: searchResponse },
-            ];
-          });
-
-          // Save conversation with the search response
-          const searchConversation = [
-            ...chatMessages,
-            userMessage,
-            {
-              role: "assistant",
-              content: searchResponse,
-            },
-          ];
-
-          if (searchConversation.length > 3) {
-            saveConversation(searchConversation, modelOptions.modelId);
-          }
-
-          return;
-        } catch (error) {
-          logger.error(
-            LogCategory.SEARCH,
-            "Error during online search:",
-            error
-          );
-          // Remove the temporary message
-          setChatMessages((prev) => {
-            const newMessages = [...prev];
-            // Remove the last message if it was our temporary one
-            if (
-              newMessages.length > 0 &&
-              newMessages[newMessages.length - 1].role === "assistant" &&
-              newMessages[newMessages.length - 1].content ===
-                "Searching online for the most current information..."
-            ) {
-              newMessages.pop();
-            }
-            return newMessages;
-          });
-          // Continue with regular inference if search fails
-        }
       }
 
       // For general queries, use the LLM
