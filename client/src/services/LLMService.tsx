@@ -25,7 +25,7 @@ interface DownloadProgress {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Qwen2.5-0.5B-Instruct-q0f32-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
+  modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -33,7 +33,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (same as default for reliability)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "Qwen2.5-0.5B-Instruct-q0f32-MLC", // Using same model as fallback
+  modelId: "Llama-3.2-1B-Instruct-q4f16_1-MLC", // Using same model as fallback
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
@@ -47,28 +47,18 @@ const DB_VERSION = 1;
 // Initialize IndexedDB
 const initializeDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
-    // Request persistent storage with user interaction
-    // In the initializeDB function, update the requestPersistentStorage function
-    // In the initializeDB function, update the requestPersistentStorage function
     const requestPersistentStorage = async (): Promise<boolean> => {
-      // Check if we're in a Capacitor environment (mobile)
       const isCapacitor = typeof (window as any).Capacitor !== "undefined";
-
-      // Define the desired storage size (3GB in bytes)
       const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
 
       try {
-        // Check if we've already requested permission in this session
         const sessionStorageKey = "luna-storage-permission-requested";
         const alreadyRequestedThisSession =
           sessionStorage.getItem(sessionStorageKey) === "true";
-
-        // Check if we've already requested permission in a previous session
         const localStorageKey = "luna-storage-permission-granted";
         const alreadyGrantedPreviously =
           localStorage.getItem(localStorageKey) === "true";
 
-        // If we've already handled permissions in this session, skip the prompt
         if (alreadyRequestedThisSession) {
           console.log(
             "Storage permission already requested in this session, skipping prompt"
@@ -76,12 +66,10 @@ const initializeDB = (): Promise<IDBDatabase> => {
           return alreadyGrantedPreviously || false;
         }
 
-        // Mark that we've requested permission in this session
         sessionStorage.setItem(sessionStorageKey, "true");
 
         if (isCapacitor) {
           try {
-            // Try to import Capacitor modules
             const capacitorPreferences = await import(
               "@capacitor/preferences"
             ).catch(() => null);
@@ -89,18 +77,15 @@ const initializeDB = (): Promise<IDBDatabase> => {
               () => null
             );
 
-            // If both modules are available, use them
             if (capacitorPreferences && capacitorDialog) {
               const Preferences = capacitorPreferences.Preferences;
               const Dialog = capacitorDialog.Dialog;
 
-              // Check if we've already asked for permission
               const { value } = await Preferences.get({
                 key: "storage-permission-asked",
               });
 
               if (value !== "true") {
-                // Show dialog to request permission
                 const { value: userChoice } = await Dialog.confirm({
                   title: "Storage Permission",
                   message:
@@ -110,7 +95,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
                 });
 
                 if (userChoice) {
-                  // User granted permission, save this preference
                   await Preferences.set({
                     key: "storage-permission-asked",
                     value: "true",
@@ -126,7 +110,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
               }
               return value === "true";
             } else {
-              // Fallback to browser approach if modules aren't available
               throw new Error("Capacitor modules not available");
             }
           } catch (importError) {
@@ -134,13 +117,10 @@ const initializeDB = (): Promise<IDBDatabase> => {
               "Capacitor modules not available, using browser fallback:",
               importError
             );
-            // Use browser approach as fallback
           }
         }
 
-        // For web browsers - improved implementation with persistence check
         if (navigator.storage && navigator.storage.persist) {
-          // First check if storage is already persisted
           const isPersisted = await navigator.storage.persisted();
           console.log(`Storage already persisted: ${isPersisted}`);
 
@@ -149,9 +129,7 @@ const initializeDB = (): Promise<IDBDatabase> => {
             return true;
           }
 
-          // If not already persisted and not previously granted, ask user
           if (!alreadyGrantedPreviously) {
-            // Try the permission API first
             if (navigator.permissions) {
               try {
                 const permissionStatus = await navigator.permissions.query({
@@ -166,7 +144,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
                   );
                   return persistResult;
                 } else if (permissionStatus.state === "prompt") {
-                  // Show our own dialog before triggering the browser dialog
                   const userConsent = window.confirm(
                     "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
                   );
@@ -183,14 +160,12 @@ const initializeDB = (): Promise<IDBDatabase> => {
                     return false;
                   }
                 }
-                // If denied, we can't do much
                 return false;
               } catch (permError) {
                 console.warn("Permission API error:", permError);
               }
             }
 
-            // Fallback to direct persist request with confirmation
             const userConsent = window.confirm(
               "Luna AI needs to store data on your device to work offline. Allow Luna to use browser storage?"
             );
@@ -208,7 +183,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
             }
           }
 
-          // If previously granted but not currently persisted, try to persist without prompting
           return await navigator.storage.persist();
         }
 
@@ -219,7 +193,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
       }
     };
 
-    // 定义重试变量
     let retryCount = 0;
     const maxRetries = 3;
 
@@ -256,12 +229,10 @@ const initializeDB = (): Promise<IDBDatabase> => {
       };
     };
 
-    // 请求持久化存储并打开数据库
     requestPersistentStorage()
       .then((isPersisted) => {
         console.log(`Final persistence status before DB open: ${isPersisted}`);
 
-        // Estimate and request storage if available
         if (navigator.storage && navigator.storage.estimate) {
           navigator.storage.estimate().then((estimate) => {
             const totalBytes = estimate.quota || 0;
@@ -273,7 +244,6 @@ const initializeDB = (): Promise<IDBDatabase> => {
               )} (${percentUsed.toFixed(2)}%)`
             );
 
-            // If we're using more than 80% of storage, try to clear old caches
             if (percentUsed > 80) {
               console.warn(
                 "Storage usage is high. Attempting to clear old caches..."
@@ -283,12 +253,10 @@ const initializeDB = (): Promise<IDBDatabase> => {
           });
         }
 
-        // Start the DB open process
         attemptOpenDB();
       })
       .catch((error) => {
         console.error("Error in persistence request:", error);
-        // 即使持久化失败，也尝试打开数据库
         attemptOpenDB();
       });
   });
@@ -323,7 +291,7 @@ export const saveModelToIndexedDB = async (
   modelData: any
 ): Promise<boolean> => {
   let retries = 0;
-  const maxRetries = 3; // Increased from 2 to 3 for more persistence
+  const maxRetries = 3;
 
   while (retries <= maxRetries) {
     try {
@@ -346,7 +314,6 @@ export const saveModelToIndexedDB = async (
       });
     } catch (error) {
       const err = error as Error;
-      // Check for quota exceeded errors with broader detection
       if (
         (err.name === "QuotaExceededError" ||
           err.message.includes("quota") ||
@@ -360,10 +327,8 @@ export const saveModelToIndexedDB = async (
           }), performing aggressive cleanup...`
         );
 
-        // First try to clear old caches
         await clearOldCaches();
 
-        // If still failing, try more aggressive cleanup - remove all other models
         if (retries > 0) {
           try {
             console.log(
@@ -378,7 +343,6 @@ export const saveModelToIndexedDB = async (
               const cursor = (event.target as IDBRequest).result;
               if (cursor) {
                 const record = cursor.value;
-                // Keep only the current model
                 if (record && record.id !== modelId) {
                   console.log(`Emergency cleanup: removing model ${record.id}`);
                   cursor.delete();
@@ -391,7 +355,6 @@ export const saveModelToIndexedDB = async (
               transaction.oncomplete = resolve;
             });
 
-            // Request persistent storage again
             if (navigator.storage && navigator.storage.persist) {
               const isPersisted = await navigator.storage.persist();
               console.log(
@@ -399,7 +362,6 @@ export const saveModelToIndexedDB = async (
               );
             }
 
-            // Check storage usage after cleanup
             if (navigator.storage && navigator.storage.estimate) {
               const estimate = await navigator.storage.estimate();
               const used = estimate.usage || 0;
@@ -416,7 +378,6 @@ export const saveModelToIndexedDB = async (
         }
 
         retries++;
-        // Add delay between retries to allow browser to complete garbage collection
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } else {
         console.error("Error saving model to IndexedDB:", error);
@@ -425,7 +386,6 @@ export const saveModelToIndexedDB = async (
     }
   }
 
-  // If we get here, all retries failed
   console.error(`Failed to save model after ${maxRetries} retries`);
   return false;
 };
@@ -493,12 +453,9 @@ export const useLLMService = (options = defaultModelOptions) => {
   const [isInferring, setIsInferring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to move all files from cache to IndexedDB
-
   // Load model with WebLLM
   const loadModel = useCallback(async (): Promise<ModelEngine | null> => {
     try {
-      // Reset states
       setIsModelLoaded(false);
       setError(null);
       console.log("Starting model load process...");
@@ -506,7 +463,6 @@ export const useLLMService = (options = defaultModelOptions) => {
       const { modelId } = modelOptions;
       console.log("Using model ID:", modelId);
 
-      // Add timeout for model loading with a longer duration
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(
           () =>
@@ -515,14 +471,12 @@ export const useLLMService = (options = defaultModelOptions) => {
                 "Model loading timeout - please check your internet connection and try again"
               )
             ),
-          30000000
-        ); // Increased to 5 minutes
+          300000
+        );
       });
 
-      // Format readable model name from the technical ID
       let readableName = modelId;
 
-      // Handle different model ID patterns
       if (modelId.includes("Qwen")) {
         readableName = "Luna (qwen 2.5)";
       } else if (modelId.includes("TinyLlama")) {
@@ -538,19 +492,15 @@ export const useLLMService = (options = defaultModelOptions) => {
       console.log("Model readable name:", readableName);
       setModelName(readableName);
 
-      // Check if model exists in IndexedDB
       const modelExists = await checkModelExists(modelId);
       console.log(`Model ${modelId} exists in IndexedDB: ${modelExists}`);
 
-      // Check if model is already loaded in memory
       if (model && isModelLoaded) {
-        // If the current loaded model is the same as requested, reuse it
         const currentModelId = (await model.getModelId?.()) || "";
         if (currentModelId === modelId) {
           console.log(`Model ${modelId} already loaded in memory, reusing it`);
           return model;
         } else {
-          // Different model requested, close the current one
           console.log(
             `Closing current model to load a different one: ${modelId}`
           );
@@ -563,20 +513,15 @@ export const useLLMService = (options = defaultModelOptions) => {
           `Model ${modelId} found in IndexedDB cache, loading from cache`
         );
         try {
-          // Model exists, load from IndexedDB
           const cachedModel = await loadModelFromIndexedDB(modelId);
           if (cachedModel) {
-            // Always create a new engine instance, even with cached data
             console.log("Initializing engine with cached model data");
             const engine = (await CreateMLCEngine(modelId, {
-              // If CreateMLCEngine supports passing cached data, do so here
-              // e.g., modelData: cachedModel,
               initProgressCallback: (report: InitProgressReport) => {
                 console.log("Loading cached model progress:", report.progress);
               },
             })) as unknown as ModelEngine;
 
-            // Add a getModelId method if it doesn't exist
             if (!engine.getModelId) {
               engine.getModelId = () => Promise.resolve(modelId);
             }
@@ -595,16 +540,13 @@ export const useLLMService = (options = defaultModelOptions) => {
         }
       }
 
-      // Model not in cache or cache loading failed, download it
       setIsDownloading(true);
       setDownloadProgress(0);
 
-      // Add retry mechanism for model loading
       let retryCount = 0;
-      const maxRetries = 3; // Increased from 2 to 3
+      const maxRetries = 3;
       let engine = null;
 
-      // Custom fetch with retry for parameter shards
       const fetchWithRetry = async (
         url: string,
         options: RequestInit = {},
@@ -615,28 +557,93 @@ export const useLLMService = (options = defaultModelOptions) => {
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             console.log(`Fetching ${url} - attempt ${attempt}/${maxAttempts}`);
-            const response = await fetch(url, {
-              ...options,
-              // Add cache busting for retry attempts after the first
-              cache: attempt > 1 ? "no-cache" : "default",
-              // Increase timeout for larger files
-              signal: AbortSignal.timeout(60000), // 60 second timeout
-            });
 
-            if (!response.ok) {
-              throw new Error(
-                `HTTP error ${response.status}: ${response.statusText}`
-              );
+            if (url.includes("params_shard")) {
+              console.log(`Starting download of parameter shard: ${url}`);
+
+              const response = await fetch(url, {
+                ...options,
+                cache: attempt > 1 ? "no-cache" : "default",
+                signal: AbortSignal.timeout(1200000), // 20 min timeout for parameter shards
+              });
+
+              if (!response.ok) {
+                throw new Error(
+                  `HTTP error ${response.status}: ${response.statusText}`
+                );
+              }
+
+              const contentLength = response.headers.get("content-length");
+              if (contentLength) {
+                const total = parseInt(contentLength, 10);
+                console.log(`Parameter shard size: ${formatByteSize(total)}`);
+
+                const reader = response.body?.getReader();
+                let receivedLength = 0;
+                let chunks = [];
+                let lastLogTime = Date.now();
+
+                while (true && reader) {
+                  const { done, value } = await reader.read();
+
+                  if (done) {
+                    console.log(`Parameter shard download complete: ${url}`);
+                    break;
+                  }
+
+                  chunks.push(value);
+                  receivedLength += value.length;
+
+                  const now = Date.now();
+                  if (now - lastLogTime > 3000) {
+                    const percentComplete = (
+                      (receivedLength / total) *
+                      100
+                    ).toFixed(2);
+                    console.log(
+                      `Download progress: ${percentComplete}% (${formatByteSize(
+                        receivedLength
+                      )}/${formatByteSize(total)})`
+                    );
+                    lastLogTime = now;
+                  }
+                }
+
+                const chunksAll = new Uint8Array(receivedLength);
+                let position = 0;
+                for (let chunk of chunks) {
+                  chunksAll.set(chunk, position);
+                  position += chunk.length;
+                }
+
+                return new Response(chunksAll, {
+                  status: response.status,
+                  statusText: response.statusText,
+                  headers: response.headers,
+                });
+              }
+
+              return response;
+            } else {
+              const response = await fetch(url, {
+                ...options,
+                cache: attempt > 1 ? "no-cache" : "default",
+                signal: AbortSignal.timeout(600000), // 10 min timeout for other files
+              });
+
+              if (!response.ok) {
+                throw new Error(
+                  `HTTP error ${response.status}: ${response.statusText}`
+                );
+              }
+
+              return response;
             }
-
-            return response;
           } catch (error) {
             lastError = error;
             console.warn(`Fetch attempt ${attempt} failed for ${url}:`, error);
 
-            // Only wait between retries, not after the last attempt
             if (attempt < maxAttempts) {
-              // Exponential backoff: 1s, 2s, 4s, 8s...
               const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
               console.log(`Retrying in ${delay / 1000}s...`);
               await new Promise((resolve) => setTimeout(resolve, delay));
@@ -647,7 +654,6 @@ export const useLLMService = (options = defaultModelOptions) => {
         throw lastError;
       };
 
-      // Patch the global fetch for WebLLM to use our retry-enabled version
       const originalFetch = window.fetch;
       const fetchController = new AbortController();
 
@@ -659,21 +665,19 @@ export const useLLMService = (options = defaultModelOptions) => {
             ? input.toString()
             : input.url;
 
-        // Check if this is a model parameter shard request
         if (url.includes("params_shard") || url.includes(".bin")) {
           console.log(`Intercepting parameter shard request: ${url}`);
           return fetchWithRetry(
             url,
             {
               ...init,
-              signal: fetchController.signal, // Connect to abort controller
-              keepalive: true, // Ensure persistent connections
+              signal: fetchController.signal,
+              keepalive: true,
             },
             5
           );
         }
 
-        // Use original fetch for other requests
         return originalFetch(input, init);
       };
 
@@ -683,7 +687,6 @@ export const useLLMService = (options = defaultModelOptions) => {
 
           const enginePromise = CreateMLCEngine(modelId, {
             initProgressCallback: (report: InitProgressReport) => {
-              // Ensure DOM synchronization for progress updates
               requestAnimationFrame(() => {
                 setDownloadProgress(report.progress * 100);
                 const matches = report.text.match(/(\d+)\/(\d+)(MB|KB|B)/i);
@@ -695,7 +698,6 @@ export const useLLMService = (options = defaultModelOptions) => {
             },
           }) as unknown as Promise<ModelEngine>;
 
-          // Race between timeout and model loading
           engine = (await Promise.race([
             enginePromise,
             timeoutPromise,
@@ -710,11 +712,10 @@ export const useLLMService = (options = defaultModelOptions) => {
             console.log(`Retrying in 3 seconds...`);
             await new Promise((resolve) => setTimeout(resolve, 3000));
           } else {
-            fetchController.abort(); // Cancel pending requests
+            fetchController.abort();
             throw loadError;
           }
         } finally {
-          // Restore original fetch and clean up
           window.fetch = originalFetch;
           fetchController.abort();
         }
@@ -728,7 +729,6 @@ export const useLLMService = (options = defaultModelOptions) => {
       setIsModelLoaded(true);
       setIsDownloading(false);
 
-      // Save model to IndexedDB for future use
       try {
         const modelData = await engine.save();
         await saveModelToIndexedDB(modelId, modelData);
@@ -745,15 +745,12 @@ export const useLLMService = (options = defaultModelOptions) => {
       setError(errorMessage);
       setIsDownloading(false);
 
-      // If the current model isn't the fallback model, try the fallback
       const currentModelId = modelOptions.modelId;
       const fallbackModelId = fallbackModelOptions.modelId;
 
       if (currentModelId !== fallbackModelId) {
         console.log("Trying fallback model:", fallbackModelId);
         setModelOptions(fallbackModelOptions);
-
-        // The loadModel will be called again with the new options via the useEffect
         return null;
       }
 
@@ -761,7 +758,6 @@ export const useLLMService = (options = defaultModelOptions) => {
     }
   }, [modelOptions]);
 
-  // Change model options
   const changeModel = useCallback(
     (newOptions: Partial<ModelOptions>) => {
       setModelOptions({ ...modelOptions, ...newOptions });
@@ -769,7 +765,6 @@ export const useLLMService = (options = defaultModelOptions) => {
     [modelOptions]
   );
 
-  // Run inference with the loaded model
   const inference = useCallback(
     async (
       systemPrompt: string | null,
@@ -782,20 +777,16 @@ export const useLLMService = (options = defaultModelOptions) => {
 
         setIsInferring(true);
 
-        // Format conversation for the LLM
         const formattedMessages: ChatMessage[] = [];
 
-        // Add system prompt
         if (systemPrompt) {
           formattedMessages.push({ role: "system", content: systemPrompt });
         }
 
-        // Add conversation messages
         messages.forEach((msg: Message) => {
           formattedMessages.push({ role: msg.role, content: msg.content });
         });
 
-        // Generate response
         const response = await model.chat({
           messages: formattedMessages,
           temperature: modelOptions.temperature,
@@ -804,18 +795,15 @@ export const useLLMService = (options = defaultModelOptions) => {
         });
 
         setIsInferring(false);
-        // The response might come in different formats based on the model implementation
+
         try {
-          // For streaming response (ChatCompletionChunk)
           if (response.choices && response.choices.length > 0) {
             const choice = response.choices[0] as any;
 
-            // Check delta content (WebLLM streaming format)
             if (choice.delta && typeof choice.delta.content !== "undefined") {
               return choice.delta.content || "";
             }
 
-            // Direct content in the choice (some implementations)
             if (
               choice.content !== undefined &&
               typeof choice.content === "string"
@@ -823,24 +811,20 @@ export const useLLMService = (options = defaultModelOptions) => {
               return choice.content;
             }
 
-            // Try to access nested message property (OpenAI-compatible format)
             if (choice.message && typeof choice.message.content === "string") {
               return choice.message.content;
             }
 
-            // Try text property (older model formats)
             if (choice.text !== undefined && typeof choice.text === "string") {
               return choice.text;
             }
           }
 
-          // Custom model response format: might be directly on the response object
           const anyResponse = response as any;
           if (typeof anyResponse.content === "string") {
             return anyResponse.content;
           }
 
-          // Last resort: stringify the response and log a warning
           console.warn("Unexpected response format:", response);
           return "I'm sorry, I couldn't generate a response at this time.";
         } catch (error) {
@@ -859,7 +843,6 @@ export const useLLMService = (options = defaultModelOptions) => {
     [model, isModelLoaded, modelOptions]
   );
 
-  // Cleanup when component unmounts
   useEffect(() => {
     return () => {
       if (model) {
@@ -885,35 +868,28 @@ export const useLLMService = (options = defaultModelOptions) => {
   };
 };
 
-// In the clearOldCaches function, update the quota request section
 const clearOldCaches = async (): Promise<void> => {
   try {
     console.log("Starting comprehensive cache cleanup...");
 
-    // Track cleanup statistics
     let totalFreed = 0;
     let cacheCleanupCount = 0;
     let modelCleanupCount = 0;
 
-    // Clear old service worker caches if available
     if ("caches" in window) {
       try {
         const cacheNames = await window.caches.keys();
         console.log(`Found ${cacheNames.length} cache entries to process`);
 
         const oldCachePromises = cacheNames.map(async (cacheName) => {
-          // Keep only the current cache version
           if (cacheName !== "webllm-v1") {
             try {
-              // Get cache size before deletion (if possible)
               let cacheSize = 0;
               try {
                 const cache = await window.caches.open(cacheName);
                 const keys = await cache.keys();
                 cacheSize = keys.length;
-              } catch (sizeError) {
-                // Ignore size calculation errors
-              }
+              } catch (sizeError) {}
 
               const deleted = await window.caches.delete(cacheName);
               if (deleted) {
@@ -935,7 +911,6 @@ const clearOldCaches = async (): Promise<void> => {
         const deletedCount = results.filter(Boolean).length;
         console.log(`Cleared ${deletedCount} old caches`);
 
-        // After clearing caches, check storage usage again
         if (navigator.storage && navigator.storage.estimate) {
           const estimate = await navigator.storage.estimate();
           const used = estimate.usage || 0;
@@ -946,10 +921,7 @@ const clearOldCaches = async (): Promise<void> => {
             )}/${formatByteSize(quota)} (${((used / quota) * 100).toFixed(1)}%)`
           );
 
-          // Define the desired storage size (3GB in bytes)
           const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
-
-          // Always request the increased quota, not just when usage is high
           console.log("Requesting increased storage quota (3GB)...");
           try {
             const isPersistent = await navigator.storage.persist();
@@ -957,9 +929,7 @@ const clearOldCaches = async (): Promise<void> => {
               `Persistent storage ${isPersistent ? "granted" : "denied"}`
             );
 
-            // Request increased quota for both storage types
             if ("webkitTemporaryStorage" in navigator) {
-              // @ts-ignore - Using non-standard API
               navigator.webkitTemporaryStorage.requestQuota(
                 desiredStorageSize,
                 (grantedBytes: number) => {
@@ -976,7 +946,6 @@ const clearOldCaches = async (): Promise<void> => {
             }
 
             if ("webkitPersistentStorage" in navigator) {
-              // @ts-ignore - Using non-standard API
               navigator.webkitPersistentStorage.requestQuota(
                 desiredStorageSize,
                 (grantedBytes: number) => {
@@ -1000,13 +969,11 @@ const clearOldCaches = async (): Promise<void> => {
       }
     }
 
-    // Clear old IndexedDB data with more aggressive strategy
     try {
       const db = await initializeDB();
       const transaction = db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
 
-      // First pass: get all models to analyze
       const getAllRequest = store.getAll();
       const models = await new Promise<any[]>((resolve) => {
         getAllRequest.onsuccess = () => resolve(getAllRequest.result || []);
@@ -1015,23 +982,18 @@ const clearOldCaches = async (): Promise<void> => {
 
       console.log(`Found ${models.length} models in IndexedDB`);
 
-      // Sort models by timestamp (oldest first)
       models.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-      // Keep track of models to delete
       const modelsToDelete: string[] = [];
 
-      // Strategy 1: Remove models older than 14 days (reduced from 30)
-      const twoWeeksAgo = Date.now() - 3650987654321 * 24 * 60 * 60 * 1000;
+      const twoWeeksAgo = Date.now() - 14 * 24 * 60 * 60 * 1000;
       models.forEach((model) => {
         if (model.timestamp && model.timestamp < twoWeeksAgo) {
           modelsToDelete.push(model.id);
         }
       });
 
-      // Strategy 2: If we have more than 3 models, keep only the 3 most recent
       if (models.length > 3) {
-        // Skip the 3 most recent models (which are at the end after sorting)
         for (let i = 0; i < models.length - 3; i++) {
           if (!modelsToDelete.includes(models[i].id)) {
             modelsToDelete.push(models[i].id);
@@ -1039,7 +1001,6 @@ const clearOldCaches = async (): Promise<void> => {
         }
       }
 
-      // Delete the identified models
       for (const modelId of modelsToDelete) {
         try {
           await new Promise<void>((resolve, reject) => {
@@ -1059,7 +1020,6 @@ const clearOldCaches = async (): Promise<void> => {
 
       console.log(`Cleared ${modelCleanupCount} models from IndexedDB`);
 
-      // For IoT environments, perform additional cleanup if needed
       const isIoTEnvironment =
         window.location.hostname.includes("iot") ||
         navigator.userAgent.includes("IoT") ||
@@ -1067,10 +1027,8 @@ const clearOldCaches = async (): Promise<void> => {
 
       if (isIoTEnvironment && models.length > 1) {
         console.log("IoT environment detected, performing additional cleanup");
-        // In IoT environments, be more aggressive - keep only the most recent model
         const mostRecentModel = models[models.length - 1]?.id;
 
-        // Second pass to delete all but the most recent
         const request = store.openCursor();
         request.onsuccess = (event) => {
           const cursor = (event.target as IDBRequest).result;
@@ -1093,12 +1051,10 @@ const clearOldCaches = async (): Promise<void> => {
       console.warn("Error clearing old IndexedDB data:", dbError);
     }
 
-    // Final cleanup report
     console.log(
       `Cleanup complete: Removed ${cacheCleanupCount} caches and ${modelCleanupCount} models`
     );
 
-    // Check final storage status
     if (navigator.storage && navigator.storage.estimate) {
       const finalEstimate = await navigator.storage.estimate();
       const used = finalEstimate.usage || 0;
@@ -1114,23 +1070,19 @@ const clearOldCaches = async (): Promise<void> => {
   }
 };
 
-// Add this function after the clearOldCaches function
 export const requestIncreasedStorageQuota = async (): Promise<void> => {
   const desiredStorageSize = 3 * 1024 * 1024 * 1024; // 3GB in bytes
 
   console.log("Requesting increased storage quota (3GB)...");
 
   try {
-    // Request persistent storage first
     if (navigator.storage && navigator.storage.persist) {
       const isPersistent = await navigator.storage.persist();
       console.log(`Persistent storage ${isPersistent ? "granted" : "denied"}`);
     }
 
-    // Request increased quota for IndexedDB (temporary storage)
     if ("webkitTemporaryStorage" in navigator) {
       await new Promise<void>((resolve) => {
-        // @ts-ignore - Using non-standard API
         navigator.webkitTemporaryStorage.requestQuota(
           desiredStorageSize,
           (grantedBytes: number) => {
@@ -1147,10 +1099,8 @@ export const requestIncreasedStorageQuota = async (): Promise<void> => {
       });
     }
 
-    // Request increased quota for Cache API (persistent storage)
     if ("webkitPersistentStorage" in navigator) {
       await new Promise<void>((resolve) => {
-        // @ts-ignore - Using non-standard API
         navigator.webkitPersistentStorage.requestQuota(
           desiredStorageSize,
           (grantedBytes: number) => {
@@ -1167,7 +1117,6 @@ export const requestIncreasedStorageQuota = async (): Promise<void> => {
       });
     }
 
-    // Check final storage allocation
     if (navigator.storage && navigator.storage.estimate) {
       const estimate = await navigator.storage.estimate();
       console.log(
