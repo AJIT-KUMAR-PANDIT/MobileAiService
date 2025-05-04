@@ -646,42 +646,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 await startListening();
                 setInstruction("Luna is listening...");
 
-                // Set timeout for 15 seconds
-                const timer = setTimeout(() => {
-                  if (listening) {
-                    stopListening();
-                    setInstruction("Say 'Luna' or tap the microphone");
-                    if (isWakeWordMode && !isWakeWordListening) {
-                      startWakeWordListening();
-                    }
-                  }
-                }, 15000);
-
-                return () => clearTimeout(timer);
-              } catch (error) {
-                console.error("Error starting listening:", error);
-                setInstruction(
-                  "Microphone access error. Please check permissions."
-                );
-              }
-            }
-          }, 100);
-
-          // After AI finishes speaking, automatically listen for user response
-          setTimeout(async () => {
-            if (!listening && !isSpeaking) {
-              // Play wake sound
-              const audio = new Audio(wakeupSoundUrl);
-              await audio
-                .play()
-                .catch((e) => console.error("Failed to play wake sound:", e));
-
-              // Wait for sound to finish before starting listening
-              await new Promise((resolve) => setTimeout(resolve, 500));
-
-              try {
-                await startListening();
-                setInstruction("Luna is listening...");
                 let lastActivityTime = Date.now();
                 let userHasSpoken = false;
 
@@ -711,7 +675,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
                     // Process the current transcript
                     if (transcript.trim()) {
-                      handleVoiceCommand(transcript);
+                      handleVoiceInput(transcript);
                     }
 
                     setInstruction("Say 'Luna' or tap the microphone");
@@ -719,6 +683,20 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     // Restart wake word detection after processing
                     if (isWakeWordMode && !isWakeWordListening) {
                       setTimeout(() => startWakeWordListening(), 1000);
+                    }
+                  } else if (inactiveTime >= 15000) {
+                    console.log(
+                      "No activity detected for 15 seconds, stopping listening"
+                    );
+                    window.removeEventListener("speech", handleSpeech);
+                    clearInterval(silenceTimeout);
+                    stopListening();
+
+                    setInstruction("Say 'Luna' or tap the microphone");
+
+                    // Restart wake word detection if enabled
+                    if (isWakeWordMode && !isWakeWordListening) {
+                      startWakeWordListening();
                     }
                   }
                 }, 1000);
