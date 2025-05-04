@@ -243,7 +243,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   ]);
 
   const LISTENING_DURATION = 15000; // 15 seconds in milliseconds
-  const SENTENCE_COMPLETION_DURATION = 5000; // 3 seconds to complete the sentence
+  const SENTENCE_COMPLETION_DURATION = 3000; // 3 seconds to complete the sentence
 
   // Process transcript when available
   useEffect(() => {
@@ -672,7 +672,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           setInstruction("Listening for your response...");
           await speak(response);
 
-          // Immediately change state to listening after speaking
+          // Automatically start listening after speaking
           setTimeout(async () => {
             if (!listening && !isSpeaking) {
               try {
