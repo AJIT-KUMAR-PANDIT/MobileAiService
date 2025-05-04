@@ -19,7 +19,7 @@ interface ChatMessage {
 
 // Default model config options
 const defaultModelOptions: ModelOptions = {
-  modelId: "Llama-3.2-1B-Instruct-q4f32_1-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
+  modelId: "SmolLM2-135M-Instruct-q0f32-MLC", // Using Qwen2.5-0.5B-Instruct-q0f32-MLC as default
   temperature: 0.7,
   maxTokens: 512,
   repetitionPenalty: 1.1,
@@ -27,7 +27,7 @@ const defaultModelOptions: ModelOptions = {
 
 // Fallback model config (same as default for reliability)
 const fallbackModelOptions: ModelOptions = {
-  modelId: "Llama-3.2-1B-Instruct-q4f32_1-MLC", // Using same model as fallback
+  modelId: "SmolLM2-135M-Instruct-q0f32-MLC", // Using same model as fallback
   temperature: 0.7,
   maxTokens: 256,
   repetitionPenalty: 1.1,
