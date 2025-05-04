@@ -17,14 +17,21 @@ export default defineConfig({
       : []),
   ],
   server: {
+    host: true,
+    cors: true,
     allowedHosts: [
-      "0e7e-2401-4900-1ca9-6817-f48a-e4f2-cb68-955.ngrok-free.app",
+      "d2c7-2401-4900-1ca9-6817-f48a-e4f2-cb68-955.ngrok-free.app",
       "ngrok-free.app", // Wildcard for all ngrok subdomains
+      "localhost",
+      "127.0.0.1",
     ],
     headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Resource-Policy': 'cross-origin',
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   },
   resolve: {
@@ -38,5 +45,12 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+  },
+  optimizeDeps: {
+    exclude: [], // Add any packages causing issues here
+  },
+  // Increase memory limit for large model loading
+  worker: {
+    format: 'es',
   },
 });

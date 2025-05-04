@@ -183,7 +183,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         animate={{ y: 0, opacity: 1 }}
       >
         <motion.h2
-          className="text-white text-2xl font-bold mb-2 font-tech"
+          className="text-white text-2xl font-bold mb-2 font-tech h-[111px] flex-wrap overflow-y-scroll"
           animate={{
             opacity: [0.8, 1],
             scale: [0.98, 1],
