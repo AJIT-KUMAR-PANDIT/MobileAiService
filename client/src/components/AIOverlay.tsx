@@ -114,32 +114,27 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetTranscript,
   } = useSpeechRecognition();
 
-  const { speak, speaking, supported, voices, setVoice } = useSpeechSynthesis();
+  const { speak: ttsSpeak, speaking, supported } = useSpeechSynthesis();
 
-  // Select a female voice if available
+  // Initial conversation when overlay opens
   useEffect(() => {
-    console.log("Available voices:", voices);
-
-    if (voices.length > 0) {
-      // Try to find a female voice - prefer Google UK English Female, Microsoft Zira, or any voice with "female" in the name
-      const femaleVoice = voices.find(
-        (voice) =>
-          voice.name.includes("Google UK English Female") ||
-          voice.name.includes("Microsoft Zira") ||
-          voice.name.toLowerCase().includes("female")
-      );
-
-      // If a female voice is found, use it
-      if (femaleVoice) {
-        console.log("Using female voice:", femaleVoice.name);
-        setVoice(femaleVoice);
-      } else {
-        // Otherwise, use the first available voice
-        console.log("No female voice found, using default:", voices[0].name);
-        setVoice(voices[0]);
+    if (isVisible && !isConversationActive) {
+      const initialGreetings = [
+        "How can I assist you today?",
+        "What can I help you with?",
+        "What's on your mind?",
+        "I'm here to help. What do you need?",
+        "How may I be of service?",
+      ];
+      const greeting =
+        initialGreetings[Math.floor(Math.random() * initialGreetings.length)];
+      setAIResponse(greeting);
+      if (ttsSpeak) {
+        ttsSpeak(greeting);
       }
+      setIsConversationActive(true);
     }
-  }, [voices, setVoice]);
+  }, [isVisible, isConversationActive, ttsSpeak]);
 
   // Wake word detection
   const {
@@ -188,10 +183,12 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       const greeting =
         initialGreetings[Math.floor(Math.random() * initialGreetings.length)];
       setAIResponse(greeting);
-      speak(greeting);
+      if (ttsSpeak) {
+        ttsSpeak(greeting);
+      }
       setIsConversationActive(true);
     }
-  }, [isVisible, isConversationActive, speak]);
+  }, [isVisible, isConversationActive, ttsSpeak]);
 
   // Start wake word detection when overlay is visible
   useEffect(() => {
@@ -399,9 +396,11 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
             "I'm having trouble loading my AI model. Please try again in a moment."
           );
           setInstruction("Tap the microphone to speak again");
-          speak(
-            "I'm having trouble loading my AI model. Please try again in a moment."
-          );
+          if (ttsSpeak) {
+            ttsSpeak(
+              "I'm having trouble loading my AI model. Please try again in a moment."
+            );
+          }
           return;
         }
       }
@@ -438,7 +437,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(response);
           setInstruction("Device control enabled. Tap to speak again.");
-          speak(response);
+          if (ttsSpeak) {
+            ttsSpeak(response);
+          }
         }
 
         return;
@@ -464,7 +465,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(response);
           setInstruction("Device control disabled. Tap to speak again.");
-          speak(response);
+          if (ttsSpeak) {
+            ttsSpeak(response);
+          }
         }
 
         return;
@@ -490,7 +493,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           } else {
             setAIResponse(commandResult.message);
             setInstruction("Normal chat mode active. Tap to speak again.");
-            speak(commandResult.message);
+            if (ttsSpeak) {
+              ttsSpeak(commandResult.message);
+            }
           }
 
           return;
@@ -544,7 +549,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(notice);
           setInstruction("Device control disabled. Tap to speak again.");
-          speak(notice);
+          if (ttsSpeak) {
+            ttsSpeak(notice);
+          }
           return;
         }
       }
@@ -589,9 +596,11 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     );
 
                   // Alert the user
-                  speak(
-                    `Your timer for ${commandResult.data.display} is complete.`
-                  );
+                  if (ttsSpeak) {
+                    ttsSpeak(
+                      `Your timer for ${commandResult.data.display} is complete.`
+                    );
+                  }
                   setActiveTimer(null);
                 }
               }, commandResult.data.durationMs);
@@ -611,7 +620,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(specialResponse);
           setInstruction("Tap the microphone to speak again");
-          speak(specialResponse);
+          if (ttsSpeak) {
+            ttsSpeak(specialResponse);
+          }
         }
 
         return;
@@ -648,7 +659,35 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(response);
           setInstruction("Listening for your response...");
-          await speak(response);
+          await ttsSpeak(response);
+
+          // Wait for speech to finish then start listening
+          setTimeout(async () => {
+            if (!listening && !speaking) {
+              try {
+                await startListening();
+                setInstruction("Luna is listening...");
+
+                // Set timeout for 15 seconds
+                const timer = setTimeout(() => {
+                  if (listening) {
+                    stopListening();
+                    setInstruction("Say 'Luna' or tap the microphone");
+                    if (isWakeWordMode && !isWakeWordListening) {
+                      startWakeWordListening();
+                    }
+                  }
+                }, 15000);
+
+                return () => clearTimeout(timer);
+              } catch (error) {
+                console.error("Error starting listening:", error);
+                setInstruction(
+                  "Microphone access error. Please check permissions."
+                );
+              }
+            }
+          }, 100);
 
           // After AI finishes speaking, automatically listen for user response
           setTimeout(async () => {
@@ -684,16 +723,22 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                   const currentTime = Date.now();
                   const inactiveTime = currentTime - lastActivityTime;
 
-                  if (inactiveTime >= 15000 && listening) {
+                  if (inactiveTime >= 3000 && listening && userHasSpoken) {
                     console.log(
-                      "No speech detected for 15 seconds, resetting..."
+                      "Processing request after 3 seconds of silence..."
                     );
                     window.removeEventListener("speech", handleSpeech);
                     clearInterval(silenceTimeout);
                     stopListening();
+
+                    // Process the current transcript
+                    if (transcript.trim()) {
+                      handleVoiceCommand(transcript);
+                    }
+
                     setInstruction("Say 'Luna' or tap the microphone");
 
-                    // Restart wake word detection after a delay
+                    // Restart wake word detection after processing
                     if (isWakeWordMode && !isWakeWordListening) {
                       setTimeout(() => startWakeWordListening(), 1000);
                     }
@@ -731,7 +776,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         } else {
           setAIResponse(errorMessage);
           setInstruction("Tap the microphone to speak again");
-          speak(errorMessage);
+          if (ttsSpeak) {
+            ttsSpeak(errorMessage);
+          }
         }
       }
     } catch (error) {
@@ -741,7 +788,9 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
       setAIResponse(fallbackMessage);
       setInstruction("Tap the microphone to speak again");
-      speak(fallbackMessage);
+      if (ttsSpeak) {
+        ttsSpeak(fallbackMessage);
+      }
     } finally {
       setIsTyping(false);
     }
@@ -921,9 +970,11 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                     );
 
                   // Alert the user
-                  speak(
-                    `Your timer for ${commandResult.data.display} is complete.`
-                  );
+                  if (ttsSpeak) {
+                    ttsSpeak(
+                      `Your timer for ${commandResult.data.display} is complete.`
+                    );
+                  }
                   setActiveTimer(null);
                 }
               }, commandResult.data.durationMs);

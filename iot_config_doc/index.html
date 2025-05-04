@@ -1,0 +1,91 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MobileAiService IoT Documentation</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="documentation">
+        <header>
+            <h1>MobileAiService IoT Integration Guide</h1>
+        </header>
+        
+        <nav class="sidebar">
+            <ul>
+                <li><a href="#setup">Initial Setup</a></li>
+                <li><a href="#configuration">Configuration</a></li>
+                <li><a href="#devices">Device Integration</a></li>
+                <li><a href="#commands">Voice Commands</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <section id="setup">
+                <h2>Initial Setup</h2>
+                <p>The MobileAiService IoT system uses the <code>iotsystemslabs.local</code> domain for local development and testing.</p>
+                <div class="code-block">
+                    <pre><code>// Base URL configuration
+export const IOT_BASE_URL = 'http://iotsystemslabs.local:3001';</code></pre>
+                </div>
+            </section>
+
+            <section id="configuration">
+                <h2>Configuration</h2>
+                <p>Configure your IoT devices through the following endpoints:</p>
+                <ul>
+                    <li>Device Registration: <code>/api/devices/register</code></li>
+                    <li>Device Status: <code>/api/devices/status</code></li>
+                    <li>Device Control: <code>/api/devices/control</code></li>
+                </ul>
+            </section>
+
+            <section id="devices">
+                <h2>Supported Devices</h2>
+                <div class="device-grid">
+                    <div class="device-card">
+                        <h3>Lighting</h3>
+                        <p>Control smart lights, lamps, and LED strips</p>
+                    </div>
+                    <div class="device-card">
+                        <h3>Climate</h3>
+                        <p>Manage thermostats and AC units</p>
+                    </div>
+                    <div class="device-card">
+                        <h3>Security</h3>
+                        <p>Access cameras and door locks</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="commands">
+                <h2>Voice Commands</h2>
+                <p>Example voice commands for Luna AI:</p>
+                <ul>
+                    <li>"Turn on the lights in the living room"</li>
+                    <li>"Set bedroom temperature to 72 degrees"</li>
+                    <li>"Lock the front door"</li>
+                </ul>
+            </section>
+
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+                <div class="troubleshooting-grid">
+                    <div class="troubleshooting-item">
+                        <h3>Device Connection Issues</h3>
+                        <p>Ensure your device is connected to the same network as the IoT system.</p>
+                    </div>
+                    <div class="troubleshooting-item">
+                        <h3>Voice Recognition</h3>
+                        <p>Check microphone permissions and wake word sensitivity settings.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

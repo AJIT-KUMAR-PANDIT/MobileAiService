@@ -9,22 +9,49 @@ interface UseSpeechRecognitionReturn {
   startListening: () => Promise<void>;
   stopListening: () => Promise<void>;
   resetTranscript: () => void;
+  processRequest: () => void;
 }
 
 const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   const [transcript, setTranscript] = useState("");
   const [listening, setListening] = useState(false);
   const [browserSupportsSpeechRecognition, setBrowserSupport] = useState(false);
+  const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
   const recognitionRef = useRef<any>(null);
 
-  useEffect(() => {
-    const SpeechRecognitionConstructor =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    setBrowserSupport(!!SpeechRecognitionConstructor);
-  }, []);
+  const stopListening = useCallback(async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await SpeechRecognition.stop();
+      } catch (error) {
+        console.error("Error stopping mobile speech recognition:", error);
+      }
+    } else if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (error) {
+        console.error("Error stopping web speech recognition:", error);
+      }
+    }
+    setListening(false);
+    clearTimeout(silenceTimer);
+  }, [silenceTimer]);
+
+  const processRequest = useCallback(() => {
+    if (transcript.trim() !== "") {
+      console.log("Processing request:", transcript);
+      stopListening();
+    }
+  }, [transcript, stopListening]);
+
+  const resetSilenceTimer = useCallback(() => {
+    clearTimeout(silenceTimer);
+    setSilenceTimer(setTimeout(processRequest, 3000));
+  }, [silenceTimer, processRequest]);
 
   const startListening = useCallback(async () => {
     setTranscript("");
+    setSilenceTimer(null);
     if (Capacitor.isNativePlatform()) {
       try {
         await SpeechRecognition.requestPermissions();
@@ -36,7 +63,7 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
         setListening(true);
         SpeechRecognition.addListener("speechRecognitionResult", (result) => {
           setTranscript(result.matches[0] || "");
-          setListening(false);
+          resetSilenceTimer();
         });
       } catch (error) {
         console.error("Mobile speech recognition error:", error);
@@ -60,7 +87,6 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
           if (event.error === "not-allowed") {
             console.error("Speech recognition permission denied");
           } else if (event.error === "aborted") {
-            // Ignore aborted errors as they're expected during normal operation
             return;
           } else {
             console.error("Web speech recognition error:", event.error);
@@ -72,6 +98,7 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
           const current = event.resultIndex;
           const transcript = event.results[current][0].transcript;
           setTranscript(transcript);
+          resetSilenceTimer();
         };
 
         recognition.start();
@@ -80,27 +107,16 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
         setListening(false);
       }
     }
-  }, [browserSupportsSpeechRecognition]);
-
-  const stopListening = useCallback(async () => {
-    if (Capacitor.isNativePlatform()) {
-      try {
-        await SpeechRecognition.stop();
-      } catch (error) {
-        console.error("Error stopping mobile speech recognition:", error);
-      }
-    } else if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (error) {
-        console.error("Error stopping web speech recognition:", error);
-      }
-    }
-    setListening(false);
-  }, []);
+  }, [browserSupportsSpeechRecognition, resetSilenceTimer]);
 
   const resetTranscript = useCallback(() => {
     setTranscript("");
+  }, []);
+
+  useEffect(() => {
+    const SpeechRecognitionConstructor =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+    setBrowserSupport(!!SpeechRecognitionConstructor);
   }, []);
 
   return {
@@ -110,6 +126,7 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     startListening,
     stopListening,
     resetTranscript,
+    processRequest,
   };
 };
 

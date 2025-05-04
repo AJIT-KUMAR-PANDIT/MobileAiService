@@ -11,87 +11,102 @@ const useSpeechSynthesis = () => {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voices, setVoices] = useState<Voice[]>([]);
-  const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null);
 
   useEffect(() => {
-    if (window.speechSynthesis) {
-      setSupported(true);
-      // Load available voices
-      const loadVoices = () => {
-        const availableVoices = window.speechSynthesis.getVoices();
-        setVoices(
-          availableVoices.map((voice) => ({
-            name: voice.name,
-            lang: voice.lang,
-          }))
-        );
-      };
-
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
+    const checkSupport = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await TextToSpeech.speak({ text: "" });
+          setSupported(true);
+        } catch (error) {
+          console.error("Mobile TTS initialization error:", error);
+        }
+      } else if (window.speechSynthesis) {
+        setSupported(true);
+        const loadVoices = () => {
+          const availableVoices = window.speechSynthesis.getVoices();
+          setVoices(
+            availableVoices.map((voice) => ({
+              name: voice.name,
+              lang: voice.lang,
+            }))
+          );
+        };
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
+    };
+    checkSupport();
   }, []);
 
   const speak = useCallback(
     async (text: string) => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          setSpeaking(true);
+      if (!text?.trim()) return;
+
+      try {
+        setSpeaking(true);
+
+        if (Capacitor.isNativePlatform()) {
           await TextToSpeech.speak({
             text,
-            lang: selectedVoice?.lang || "en-US",
-            rate: 0.9, // Slightly slower for better clarity
-            pitch: 1.1, // Slightly higher pitch for more natural sound
+            lang: "en-US",
+            rate: 1.0,
+            pitch: 1.0,
             volume: 1.0,
           });
           setSpeaking(false);
-        } catch (error) {
-          console.error("Mobile TTS error:", error);
-          setSpeaking(false);
-        }
-      } else if (supported && window.speechSynthesis) {
-        const synth = window.speechSynthesis;
-        const utterance = new SpeechSynthesisUtterance(text);
+        } else if (supported && window.speechSynthesis) {
+          window.speechSynthesis.cancel(); // Cancel any ongoing speech
 
-        // Get available voices
-        const voices = synth.getVoices();
-        // Try to find a natural sounding female voice
-        const preferredVoice =
-          voices.find(
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          utterance.lang = "en-US";
+
+          const availableVoices = window.speechSynthesis.getVoices();
+          console.log("Available voices:", availableVoices.map(v => v.name));
+          
+          // First try to find a female voice
+          let preferredVoice = availableVoices.find(
             (voice) =>
-              voice.name.includes("Natural") ||
-              voice.name.includes("Female") ||
-              voice.name.includes("Samantha")
-          ) || voices[0];
-
-        utterance.voice = preferredVoice;
-        utterance.rate = 0.9; // Slightly slower
-        utterance.pitch = 1.1; // Slightly higher pitch
-        utterance.volume = 1.0;
-
-        // Add natural pauses at punctuation
-        const sentences = text.split(/[.!?]+/);
-        sentences.forEach((sentence, index) => {
-          if (index < sentences.length - 1) {
-            sentence += ".";
-          }
-          const sentenceUtterance = new SpeechSynthesisUtterance(
-            sentence.trim()
+              (voice.name.includes("Female") || 
+               voice.name.includes("Zira") ||
+               voice.name.includes("Samantha") ||
+               voice.name.includes("Victoria") ||
+               voice.name.includes("Karen")) &&
+              (voice.lang.startsWith("en-") || voice.name.includes("English"))
           );
-          sentenceUtterance.voice = preferredVoice;
-          sentenceUtterance.rate = 0.9;
-          sentenceUtterance.pitch = 1.1;
-          synth.speak(sentenceUtterance);
-        });
-        utterance.onstart = () => setSpeaking(true);
-        utterance.onend = () => setSpeaking(false);
-        utterance.onerror = (event) => {
-          console.error("Web TTS error:", event);
-          setSpeaking(false);
-        };
+          
+          // If no specific female voice found, fall back to any English voice
+          if (!preferredVoice) {
+            preferredVoice = availableVoices.find(
+              (voice) =>
+                voice.name.includes("Google") ||
+                voice.name.includes("English") ||
+                voice.lang.startsWith("en-")
+            );
+          }
+
+          if (preferredVoice) {
+            console.log("Selected voice:", preferredVoice.name);
+            utterance.voice = preferredVoice;
+          }
+
+          utterance.onend = () => setSpeaking(false);
+          utterance.onerror = (event) => {
+            console.error("Speech synthesis error:", event);
+            setSpeaking(false);
+          };
+
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (error) {
+        console.error("TTS error:", error);
+        setSpeaking(false);
       }
     },
-    [supported, selectedVoice]
+    [supported]
   );
 
   return {
@@ -99,7 +114,6 @@ const useSpeechSynthesis = () => {
     supported,
     speaking,
     voices,
-    setVoice: setSelectedVoice,
   };
 };
 
