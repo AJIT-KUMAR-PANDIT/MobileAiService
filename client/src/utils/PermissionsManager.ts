@@ -1,8 +1,8 @@
-import { Capacitor } from '@capacitor/core';
-import { Camera } from '@capacitor/camera';
-import { Filesystem } from '@capacitor/filesystem';
-import { Toast } from '@capacitor/toast';
-import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+import { Capacitor } from "@capacitor/core";
+import { Camera } from "@capacitor/camera";
+import { Filesystem } from "@capacitor/filesystem";
+import { Toast } from "@capacitor/toast";
+import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 
 export class PermissionsManager {
   /**
@@ -16,18 +16,17 @@ export class PermissionsManager {
     try {
       // Request microphone permission (for speech recognition)
       await this.requestMicrophonePermission();
-      
+
       // Request storage permission (for model storage)
       await this.requestStoragePermission();
-      
+
       // Request camera permission (optional, for image input)
       await this.requestCameraPermission();
-      
     } catch (error) {
-      console.error('Error requesting permissions:', error);
+      console.error("Error requesting permissions:", error);
       await Toast.show({
-        text: 'Some permissions were denied. App functionality may be limited.',
-        duration: 'long',
+        text: "Some permissions were denied. App functionality may be limited.",
+        duration: "long",
       });
     }
   }
@@ -45,11 +44,12 @@ export class PermissionsManager {
       const { available } = await SpeechRecognition.available();
       if (available) {
         const permissionStatus = await SpeechRecognition.requestPermissions();
-        // Fix: Access the correct property on the permission status object
-        if (permissionStatus.state !== 'granted') {
+        console.log("PermissionStatus:", permissionStatus); // Log the object
+
+        if (permissionStatus.granted !== true) {
           await Toast.show({
-            text: 'Microphone permission is needed for voice features',
-            duration: 'long',
+            text: "Microphone permission is needed for voice features",
+            duration: "long",
           });
           return false;
         }
@@ -57,7 +57,7 @@ export class PermissionsManager {
       }
       return false;
     } catch (error) {
-      console.error('Error requesting microphone permission:', error);
+      console.error("Error requesting microphone permission:", error);
       return false;
     }
   }
@@ -73,19 +73,19 @@ export class PermissionsManager {
     try {
       // Use Filesystem plugin to check permissions
       const permissionStatus = await Filesystem.checkPermissions();
-      if (permissionStatus.publicStorage !== 'granted') {
+      if (permissionStatus.publicStorage !== "granted") {
         const requestResult = await Filesystem.requestPermissions();
-        if (requestResult.publicStorage !== 'granted') {
+        if (requestResult.publicStorage !== "granted") {
           await Toast.show({
-            text: 'Storage permission is needed to save AI models',
-            duration: 'long',
+            text: "Storage permission is needed to save AI models",
+            duration: "long",
           });
           return false;
         }
       }
       return true;
     } catch (error) {
-      console.error('Error requesting storage permission:', error);
+      console.error("Error requesting storage permission:", error);
       return false;
     }
   }
@@ -101,17 +101,17 @@ export class PermissionsManager {
     try {
       // Use Camera plugin to request permissions
       const permissionStatus = await Camera.checkPermissions();
-      if (permissionStatus.camera !== 'granted') {
+      if (permissionStatus.camera !== "granted") {
         const requestResult = await Camera.requestPermissions();
-        if (requestResult.camera !== 'granted') {
+        if (requestResult.camera !== "granted") {
           // Camera is optional, so just log this
-          console.log('Camera permission not granted');
+          console.log("Camera permission not granted");
           return false;
         }
       }
       return true;
     } catch (error) {
-      console.error('Error requesting camera permission:', error);
+      console.error("Error requesting camera permission:", error);
       return false;
     }
   }

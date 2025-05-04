@@ -224,8 +224,8 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   // Export the selected voice for use in the parent component
   useEffect(() => {
     if (selectedVoiceRef.current && window.speechSynthesis) {
-      // You can expose this to parent component if needed
-      window.selectedVoice = selectedVoiceRef.current;
+      // Use a type-safe approach to store the selected voice
+      (window as any).selectedVoice = selectedVoiceRef.current;
     }
   }, [availableVoices]);
 

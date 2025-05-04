@@ -241,11 +241,15 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetDetection,
     wakeupSoundUrl,
   ]);
-  const LISTENING_DURATION = 15000; // 15 seconds
+
+  const LISTENING_DURATION = 15000; // 15 seconds in milliseconds
+  const SENTENCE_COMPLETION_DURATION = 5000; // 3 seconds to complete the sentence
+
   // Process transcript when available
   useEffect(() => {
     let listenTimeoutTimer: NodeJS.Timeout;
     let lastActivityTime = Date.now();
+    let sentenceCompletionTimer: NodeJS.Timeout;
 
     const checkInactivity = () => {
       const currentTime = Date.now();
@@ -265,10 +269,27 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       return false;
     };
 
+    const handleSentenceCompletion = () => {
+      clearTimeout(sentenceCompletionTimer);
+      if (transcript.trim()) {
+        handleVoiceInput(transcript);
+      }
+      stopListening();
+      setInstruction("Say 'Luna' or tap the microphone");
+      if (isWakeWordMode && !isWakeWordListening) {
+        startWakeWordListening();
+      }
+    };
+
     if (listening) {
       // Reset activity timer when speech is detected
       const resetTimer = () => {
         lastActivityTime = Date.now();
+        clearTimeout(sentenceCompletionTimer);
+        sentenceCompletionTimer = setTimeout(
+          handleSentenceCompletion,
+          SENTENCE_COMPLETION_DURATION
+        );
       };
 
       // Check for inactivity every second
@@ -283,6 +304,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
       return () => {
         clearInterval(listenTimeoutTimer);
+        clearTimeout(sentenceCompletionTimer);
         window.removeEventListener("speech", resetTimer);
       };
     }
@@ -620,8 +642,19 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       console.log("Messages:", messages);
 
       try {
+        // Validate and format input data before sending to LLM
+        const validatedMessages = messages.map((msg) => {
+          if (msg.role !== "user" && msg.role !== "assistant") {
+            throw new Error(`Invalid role: ${msg.role}`);
+          }
+          if (typeof msg.content !== "string") {
+            throw new Error(`Invalid content type: ${typeof msg.content}`);
+          }
+          return msg;
+        });
+
         // Send to LLM for inference with error handling
-        const response = await inference(systemPrompt, messages);
+        const response = await inference(systemPrompt, validatedMessages);
         console.log("Received response from LLM:", response);
 
         // Create assistant message with LLM response
@@ -639,7 +672,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
           setInstruction("Listening for your response...");
           await speak(response);
 
-          // Wait for speech to finish then start listening
+          // Immediately change state to listening after speaking
           setTimeout(async () => {
             if (!listening && !isSpeaking) {
               try {
