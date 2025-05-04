@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface VoiceUIProps {
@@ -20,6 +20,13 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   isInferring,
   onRecordToggle,
 }) => {
+  const [speechStartTime, setSpeechStartTime] = useState(Date.now());
+
+  useEffect(() => {
+    if (isSpeaking) {
+      setSpeechStartTime(Date.now());
+    }
+  }, [isSpeaking]);
   const getAnimationState = () => {
     if (isListening) {
       // Add pulsing animation to indicate 15s timeout
@@ -182,20 +189,45 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
-        <motion.h2
-          className="text-white text-2xl font-bold mb-2 font-tech h-[111px] flex-wrap overflow-y-scroll"
-          animate={{
-            opacity: [0.8, 1],
-            scale: [0.98, 1],
-          }}
-          transition={{
-            duration: 1.5,
-            repeat: Infinity,
-            ease: "easeInOut",
-          }}
-        >
-          {message}
-        </motion.h2>
+        <motion.div className="text-white text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4">
+          {message.split(" ").map((word, index) => {
+            const currentWordIndex =
+              Math.floor((Date.now() - speechStartTime) / 200) %
+              message.split(" ").length;
+            const isCurrentWord = isSpeaking && index === currentWordIndex;
+
+            return (
+              <motion.span
+                key={index}
+                className={`inline-block mx-1 rounded px-1`}
+                ref={(node) => {
+                  if (node && isCurrentWord) {
+                    node.scrollIntoView({
+                      behavior: "smooth",
+                      block: "center",
+                    });
+                  }
+                }}
+                animate={{
+                  color: isCurrentWord ? "#3b82f6" : "#ffffff",
+                  scale: isCurrentWord ? 1.1 : 1,
+                  backgroundColor: isCurrentWord
+                    ? "rgba(59, 130, 246, 0.2)"
+                    : "transparent",
+                  boxShadow: isCurrentWord
+                    ? "0 0 10px rgba(59, 130, 246, 0.3)"
+                    : "none",
+                }}
+                transition={{
+                  duration: 0.3,
+                  ease: "easeInOut",
+                }}
+              >
+                {word}
+              </motion.span>
+            );
+          })}
+        </motion.div>
         <p className="text-gray-300 text-sm">{instruction}</p>
       </motion.div>
 

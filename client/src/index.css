@@ -1,3 +1,17 @@
+/* Custom Scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 2px;
+}
+
+.scrollbar-thumb-blue-500::-webkit-scrollbar-thumb {
+  background: #3b82f6;
+  border-radius: 1px;
+}
+
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -86,12 +100,12 @@
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(226, 0, 0, 0.7);
   }
-  
+
   70% {
     transform: scale(1);
     box-shadow: 0 0 0 10px rgba(226, 0, 0, 0);
   }
-  
+
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(226, 0, 0, 0);
