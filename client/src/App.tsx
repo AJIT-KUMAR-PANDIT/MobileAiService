@@ -7,6 +7,10 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import { useEffect, useState } from "react";
 import { syncCacheToIndexDbOnStartup } from "./utils/cacheToIndexDb";
+import { SplashScreen } from "@capacitor/splash-screen";
+import { StatusBar, Style } from "@capacitor/status-bar";
+import { Capacitor } from "@capacitor/core";
+import "./index.css";
 
 function Router() {
   return (
@@ -18,16 +22,30 @@ function Router() {
 }
 
 function App() {
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
   useEffect(() => {
     // Run the cache to IndexedDB sync when the app starts
     syncCacheToIndexDbOnStartup();
 
-    // ... other initialization code
-  }, []);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+    // Initialize Capacitor for native platforms
+    const initCapacitor = async () => {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await SplashScreen.hide();
+          await StatusBar.setStyle({ style: Style.Dark });
+          if (Capacitor.getPlatform() === "android") {
+            StatusBar.setBackgroundColor({ color: "#000000" });
+          }
+        } catch (error) {
+          console.error("Error initializing Capacitor:", error);
+        }
+      }
+    };
 
-  // Check system preference for dark mode
-  useEffect(() => {
+    initCapacitor();
+
+    // Check system preference for dark mode
     if (
       window.matchMedia &&
       window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -64,3 +82,6 @@ function App() {
 }
 
 export default App;
+
+
+
