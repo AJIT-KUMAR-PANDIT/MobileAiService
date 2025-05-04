@@ -68,6 +68,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         const timer = setTimeout(() => {
           setSubtitle("Waiting for your response...");
           setSpeakerType(null);
+          onRecordToggle(); // Start listening after 15 seconds
         }, 15000);
         return () => clearTimeout(timer);
       } else {

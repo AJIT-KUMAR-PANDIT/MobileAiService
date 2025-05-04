@@ -7,7 +7,6 @@ import { ModelSelector } from "./ModelSelector";
 import { useLLMService } from "@/services/LLMService";
 import { Message, ModelOptions } from "@/types/llm";
 import useSpeechRecognition from "@/hooks/useSpeechRecognition";
-import useSpeechSynthesis from "@/hooks/useSpeechSynthesis";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import useWakeWordDetection from "@/services/WakeWordService";
 import { processVoiceCommand, CommandType } from "@/utils/voiceCommands";
@@ -115,8 +114,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetTranscript,
   } = useSpeechRecognition();
 
-  const { speak: ttsSpeak, speaking, supported } = useSpeechSynthesis();
-
   // Initial conversation when overlay opens
   useEffect(() => {
     if (isVisible && !isConversationActive) {
@@ -180,7 +177,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         mode === "voice" &&
         !isWakeWordListening &&
         !listening &&
-        !speaking &&
+        !isSpeaking &&
         !isInferring
       ) {
         console.log("Starting wake word detection for 'Luna'...");
@@ -193,7 +190,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     setTimeout(startWakeWordDetection, 1000);
 
     // Restart detection when other processes finish
-    if (!listening && !speaking && !isInferring) {
+    if (!listening && !isSpeaking && !isInferring) {
       startWakeWordDetection();
     }
 
@@ -208,7 +205,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     mode,
     isWakeWordListening,
     listening,
-    speaking,
+    isSpeaking,
     isInferring,
     startWakeWordListening,
     stopWakeWordListening,
@@ -299,7 +296,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   }, [
     transcript,
     listening,
-    speaking,
+    isSpeaking,
     isInferring,
     resetTranscript,
     startListening,
@@ -313,7 +310,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       isModelLoaded &&
       mode === "voice" &&
       !listening &&
-      !speaking &&
+      !isSpeaking &&
       !isInferring &&
       isWakeWordMode &&
       !isWakeWordListening
@@ -331,7 +328,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     isModelLoaded,
     mode,
     listening,
-    speaking,
+    isSpeaking,
     isInferring,
     isWakeWordMode,
     isWakeWordListening,
@@ -345,7 +342,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     // Handle wake word detection when switching modes
     if (newMode === "voice") {
       // Switching to voice mode - start wake word detection if enabled
-      if (isWakeWordMode && !isWakeWordListening && !listening && !speaking) {
+      if (isWakeWordMode && !isWakeWordListening && !listening && !isSpeaking) {
         setTimeout(() => {
           startWakeWordListening();
           setInstruction("Say 'Luna' or tap the microphone");
@@ -644,7 +641,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
           // Wait for speech to finish then start listening
           setTimeout(async () => {
-            if (!listening && !speaking) {
+            if (!listening && !isSpeaking) {
               try {
                 await startListening();
                 setInstruction("Luna is listening...");
@@ -672,7 +669,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
           // After AI finishes speaking, automatically listen for user response
           setTimeout(async () => {
-            if (!listening && !speaking) {
+            if (!listening && !isSpeaking) {
               // Play wake sound
               const audio = new Audio(wakeupSoundUrl);
               await audio
@@ -1077,7 +1074,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       setInstruction("Wake word detection disabled");
     } else {
       // Turning on wake word detection
-      if (!listening && !speaking && !isInferring) {
+      if (!listening && !isSpeaking && !isInferring) {
         startWakeWordListening();
         setInstruction("Say 'Luna' to activate");
       }
@@ -1197,7 +1194,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                       viewBox="0 0 20 20"
                       fill="currentColor"
                     >
-                      <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
+                      <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4a1 1 0 011-1zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
                     </svg>
                   ) : (
                     // Chat icon
@@ -1322,7 +1319,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 message={aiResponse}
                 instruction={instruction}
                 isListening={listening}
-                isSpeaking={speaking}
+                isSpeaking={isSpeaking}
                 isInferring={isInferring}
                 onRecordToggle={handleMicrophoneToggle}
               />
