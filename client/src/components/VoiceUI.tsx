@@ -1,4 +1,4 @@
-import { FC, useState, useEffect } from "react";
+import { FC, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface VoiceUIProps {
@@ -9,6 +9,7 @@ interface VoiceUIProps {
   isSpeaking: boolean;
   isInferring: boolean;
   onRecordToggle: () => void;
+  voicePreference?: string; // Add voice preference prop
 }
 
 export const VoiceUI: FC<VoiceUIProps> = ({
@@ -19,14 +20,69 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   isSpeaking,
   isInferring,
   onRecordToggle,
+  voicePreference = "indian-female", // Default to Indian female voice
 }) => {
   const [speechStartTime, setSpeechStartTime] = useState(Date.now());
+  const [subtitle, setSubtitle] = useState("");
+  const [speakerType, setSpeakerType] = useState<"assistant" | "user" | null>(
+    null
+  );
+  const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [lastSpeechTime, setLastSpeechTime] = useState(Date.now());
+
+  // Add voice selection logic
+  const [availableVoices, setAvailableVoices] = useState<
+    SpeechSynthesisVoice[]
+  >([]);
+  const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
   useEffect(() => {
     if (isSpeaking) {
       setSpeechStartTime(Date.now());
+      setSpeakerType("assistant");
+      setSubtitle("Luna is speaking...");
+      setLastSpeechTime(Date.now());
+
+      // Reset silence timer when assistant stops speaking
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+      }
+    } else if (isListening) {
+      setSpeakerType("user");
+      setSubtitle("Listening to you...");
+      setLastSpeechTime(Date.now());
+
+      // Start silence timer when user starts speaking
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+      }
+      const timer = setTimeout(() => {
+        if (isListening) {
+          onRecordToggle(); // Stop listening after 3 seconds of silence
+        }
+      }, 3000);
+      setSilenceTimer(timer);
+    } else if (!isSpeaking && !isListening) {
+      // Only wait 15 seconds after assistant response
+      if (speakerType === "assistant") {
+        const timer = setTimeout(() => {
+          setSubtitle("Waiting for your response...");
+          setSpeakerType(null);
+        }, 15000);
+        return () => clearTimeout(timer);
+      } else {
+        setSpeakerType(null);
+        setSubtitle("");
+      }
     }
-  }, [isSpeaking]);
+
+    return () => {
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+      }
+    };
+  }, [isSpeaking, isListening, onRecordToggle, speakerType]);
+
   const getAnimationState = () => {
     if (isListening) {
       // Add pulsing animation to indicate 15s timeout
@@ -115,6 +171,63 @@ export const VoiceUI: FC<VoiceUIProps> = ({
 
   const currentState = getAnimationState();
 
+  // Load available voices
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setAvailableVoices(voices);
+
+        // Find Indian female voice
+        let voice = null;
+
+        // First try: Look for Hindi voices
+        voice = voices.find(
+          (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
+        );
+
+        // Second try: Look for Indian English voices
+        if (!voice) {
+          voice = voices.find(
+            (v) =>
+              (v.lang === "en-IN" || v.name.toLowerCase().includes("indian")) &&
+              v.name.toLowerCase().includes("female")
+          );
+        }
+
+        // Third try: Any female voice
+        if (!voice) {
+          voice = voices.find((v) => v.name.toLowerCase().includes("female"));
+        }
+
+        // Fallback to any voice
+        if (!voice && voices.length > 0) {
+          voice = voices[0];
+        }
+
+        if (voice) {
+          console.log("Selected voice:", voice.name, voice.lang);
+          selectedVoiceRef.current = voice;
+        }
+      };
+
+      loadVoices();
+
+      // Chrome loads voices asynchronously
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
+    }
+  }, []);
+
+  // Export the selected voice for use in the parent component
+  useEffect(() => {
+    if (selectedVoiceRef.current && window.speechSynthesis) {
+      // You can expose this to parent component if needed
+      window.selectedVoice = selectedVoiceRef.current;
+    }
+  }, [availableVoices]);
+
   return (
     <motion.div
       className="flex-1 flex flex-col items-center justify-center p-6"
@@ -189,51 +302,86 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
-        <motion.div className="text-white text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4">
-          {message.split(" ").map((word, index) => {
-            const currentWordIndex =
-              Math.floor((Date.now() - speechStartTime) / 200) %
-              message.split(" ").length;
-            const isCurrentWord = isSpeaking && index === currentWordIndex;
-
-            return (
-              <motion.span
-                key={index}
-                className={`inline-block mx-1 rounded px-1`}
-                ref={(node) => {
-                  if (node && isCurrentWord) {
-                    node.scrollIntoView({
-                      behavior: "smooth",
-                      block: "center",
-                    });
-                  }
-                }}
-                animate={{
-                  color: isCurrentWord ? "#3b82f6" : "#ffffff",
-                  scale: isCurrentWord ? 1.1 : 1,
-                  backgroundColor: isCurrentWord
-                    ? "rgba(59, 130, 246, 0.2)"
-                    : "transparent",
-                  boxShadow: isCurrentWord
-                    ? "0 0 10px rgba(59, 130, 246, 0.3)"
-                    : "none",
-                }}
-                transition={{
-                  duration: 0.3,
-                  ease: "easeInOut",
-                }}
+        <motion.div className="relative">
+          {subtitle && (
+            <motion.div
+              className="absolute -top-6 left-0 right-0 text-sm font-medium"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <span
+                className={`${
+                  speakerType === "assistant"
+                    ? "text-blue-400"
+                    : "text-green-400"
+                }`}
               >
-                {word}
-              </motion.span>
-            );
-          })}
+                {subtitle}
+              </span>
+            </motion.div>
+          )}
+          <motion.div className="text-white text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4">
+            {message.split(" ").map((word, index, array) => {
+              const currentWordIndex =
+                Math.floor((Date.now() - speechStartTime) / 200) % array.length;
+              const isCurrentWord = isSpeaking && index === currentWordIndex;
+              const isPrevWord =
+                index >= currentWordIndex - 2 && index < currentWordIndex;
+              const isNextWord =
+                index <= currentWordIndex + 2 && index > currentWordIndex;
+
+              const getWordStyle = () => {
+                if (isCurrentWord) {
+                  return isSpeaking
+                    ? "bg-blue-500/20 text-blue-400 scale-110"
+                    : "bg-green-500/20 text-green-400 scale-110";
+                }
+                if (isPrevWord || isNextWord) {
+                  return "opacity-80";
+                }
+                return "opacity-40";
+              };
+
+              return (
+                <motion.span
+                  key={index}
+                  className={`inline-block mx-1 rounded px-1 transition-all duration-200 ${getWordStyle()}`}
+                  ref={(node) => {
+                    if (node && isCurrentWord) {
+                      node.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                    }
+                  }}
+                  animate={{
+                    color: isCurrentWord ? "#3b82f6" : "#ffffff",
+                    scale: isCurrentWord ? 1.1 : 1,
+                    backgroundColor: isCurrentWord
+                      ? "rgba(59, 130, 246, 0.2)"
+                      : "transparent",
+                    boxShadow: isCurrentWord
+                      ? "0 0 10px rgba(59, 130, 246, 0.3)"
+                      : "none",
+                  }}
+                  transition={{
+                    duration: 0.3,
+                    ease: "easeInOut",
+                  }}
+                >
+                  {word}
+                </motion.span>
+              );
+            })}
+          </motion.div>
         </motion.div>
         <p className="text-gray-300 text-sm">{instruction}</p>
       </motion.div>
 
       <motion.button
         onClick={onRecordToggle}
-        className="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg 
+        className="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg
           flex items-center justify-center hover:scale-110 transition-transform duration-300"
         whileTap={{ scale: 0.9 }}
       >

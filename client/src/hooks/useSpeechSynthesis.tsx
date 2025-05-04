@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
@@ -11,6 +11,7 @@ const useSpeechSynthesis = () => {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const synthesisRef = useRef<SpeechSynthesis | null>(null); // Added useRef for potential future use
 
   useEffect(() => {
     const checkSupport = async () => {
@@ -34,13 +35,15 @@ const useSpeechSynthesis = () => {
         };
         loadVoices();
         window.speechSynthesis.onvoiceschanged = loadVoices;
+        synthesisRef.current = window.speechSynthesis; // Assign to ref
       }
     };
     checkSupport();
   }, []);
 
   const speak = useCallback(
-    async (text: string) => {
+    async (text: string, speaker: string) => {
+      // Added speaker parameter
       if (!text?.trim()) return;
 
       try {
@@ -56,7 +59,7 @@ const useSpeechSynthesis = () => {
           });
           setSpeaking(false);
         } else if (supported && window.speechSynthesis) {
-          window.speechSynthesis.cancel(); // Cancel any ongoing speech
+          window.speechSynthesis.cancel();
 
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 1.0;
@@ -65,31 +68,14 @@ const useSpeechSynthesis = () => {
           utterance.lang = "en-US";
 
           const availableVoices = window.speechSynthesis.getVoices();
-          console.log("Available voices:", availableVoices.map(v => v.name));
-          
-          // First try to find a female voice
-          let preferredVoice = availableVoices.find(
+          const preferredVoice = availableVoices.find(
             (voice) =>
-              (voice.name.includes("Female") || 
-               voice.name.includes("Zira") ||
-               voice.name.includes("Samantha") ||
-               voice.name.includes("Victoria") ||
-               voice.name.includes("Karen")) &&
-              (voice.lang.startsWith("en-") || voice.name.includes("English"))
+              voice.name.includes("Google") ||
+              voice.name.includes("English") ||
+              voice.lang.startsWith("en-")
           );
-          
-          // If no specific female voice found, fall back to any English voice
-          if (!preferredVoice) {
-            preferredVoice = availableVoices.find(
-              (voice) =>
-                voice.name.includes("Google") ||
-                voice.name.includes("English") ||
-                voice.lang.startsWith("en-")
-            );
-          }
 
           if (preferredVoice) {
-            console.log("Selected voice:", preferredVoice.name);
             utterance.voice = preferredVoice;
           }
 

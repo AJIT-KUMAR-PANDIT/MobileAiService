@@ -1,6 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { existsSync } from "fs";
+import { kill } from "process";
 
 const app = express();
 app.use(express.json());
@@ -56,15 +58,58 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  const PORT = 5000;
+  const startServer = () => {
+    server.listen(
+      {
+        port: PORT,
+        host: "0.0.0.0",
+        reusePort: true,
+      },
+      () => {
+        log(`serving on port ${PORT}`);
+      }
+    );
+  };
+
+  const killExistingProcess = async () => {
+    try {
+      const { exec } = require("child_process");
+      const { stdout, stderr } = await new Promise((resolve, reject) => {
+        exec(
+          `lsof -i :${PORT} | grep LISTEN | awk '{print $2}'`,
+          (error, stdout, stderr) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve({ stdout, stderr });
+            }
+          }
+        );
+      });
+      if (stdout.trim()) {
+        const pids = stdout.trim().split("\n");
+        await Promise.all(
+          pids.map(
+            (pid) =>
+              new Promise((resolve, reject) => {
+                kill(parseInt(pid), "SIGKILL", (err) => {
+                  if (err) reject(err);
+                  else resolve();
+                });
+              })
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Error killing existing process:", error);
+    }
+  };
+
+  try {
+    await killExistingProcess();
+    startServer();
+  } catch (error) {
+    console.error("Failed to start server:", error);
+  }
 })();
