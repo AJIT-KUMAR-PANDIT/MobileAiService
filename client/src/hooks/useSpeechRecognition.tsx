@@ -119,19 +119,14 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     if (Capacitor.isNativePlatform()) {
       try {
         const permissionStatus = await SpeechRecognition.requestPermissions();
-        // Check permission using the correct property structure
-        // The @capacitor-community/speech-recognition plugin uses a different structure
-        if (!permissionStatus) {
+        if (!permissionStatus || permissionStatus.speechRecognition !== 'granted') {
           console.error("Speech recognition permission denied");
           return;
         }
-        
         // Remove any existing listeners
         if (listenerRef.current) {
           listenerRef.current.remove();
         }
-        
-        // Add the correct event listener
         listenerRef.current = await SpeechRecognition.addListener(
           "partialResults",
           (result: { matches: string[] }) => {
@@ -139,14 +134,20 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
             resetSilenceTimer();
           }
         );
-
+        // Remove this block (not supported):
+        // await SpeechRecognition.addListener(
+        //   "result",
+        //   (result: { matches: string[] }) => {
+        //     setTranscript(result.matches[0] || "");
+        //     resetSilenceTimer();
+        //   }
+        // );
         await SpeechRecognition.start({
           language: "en-US",
           maxResults: 1,
           prompt: "Speak now",
           partialResults: true,
         });
-
         setListening(true);
       } catch (error) {
         console.error("Mobile speech recognition error:", error);
