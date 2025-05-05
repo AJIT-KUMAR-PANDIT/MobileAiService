@@ -27,47 +27,59 @@ export function useIndianVoice(voicePreference: string = "indian-female") {
     } else {
       // Use browser TTS for web
       const synth = window.speechSynthesis;
-      const utter = new SpeechSynthesisUtterance(text);
+      const speakWithVoices = () => {
+        const utter = new SpeechSynthesisUtterance(text);
+        let voices = synth.getVoices();
+        let selectedVoice: SpeechSynthesisVoice | undefined;
 
-      let voices = synth.getVoices();
-      let selectedVoice: SpeechSynthesisVoice | undefined;
-
-      if (voicePreference === "indian-female") {
-        // Prefer Hindi female, then Indian English female
-        selectedVoice =
-          voices.find(
-            (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
-          ) ||
-          voices.find(
-            (v) =>
-              (v.lang === "en-IN" || v.name.toLowerCase().includes("indian")) &&
-              v.name.toLowerCase().includes("female")
+        if (voicePreference === "indian-female") {
+          selectedVoice =
+            voices.find(
+              (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
+            ) ||
+            voices.find(
+              (v) =>
+                (v.lang === "en-IN" || v.name.toLowerCase().includes("indian")) &&
+                v.name.toLowerCase().includes("female")
+            );
+        } else if (voicePreference === "british-male") {
+          selectedVoice = voices.find(
+            (v) => v.lang === "en-GB" && v.name.toLowerCase().includes("male")
           );
-      } else if (voicePreference === "british-male") {
-        selectedVoice = voices.find(
-          (v) => v.lang === "en-GB" && v.name.toLowerCase().includes("male")
-        );
-      } else if (voicePreference === "american-female") {
-        selectedVoice = voices.find(
-          (v) => v.lang === "en-US" && v.name.toLowerCase().includes("female")
-        );
-      }
+        } else if (voicePreference === "american-female") {
+          selectedVoice = voices.find(
+            (v) => v.lang === "en-US" && v.name.toLowerCase().includes("female")
+          );
+        }
 
-      // Fallbacks
-      if (!selectedVoice) {
-        selectedVoice = voices.find((v) => v.name.toLowerCase().includes("female"));
-      }
-      if (!selectedVoice && voices.length > 0) {
-        selectedVoice = voices[0];
-      }
+        if (!selectedVoice) {
+          selectedVoice = voices.find((v) => v.name.toLowerCase().includes("female"));
+        }
+        if (!selectedVoice && voices.length > 0) {
+          selectedVoice = voices[0];
+        }
 
-      if (selectedVoice) {
-        utter.voice = selectedVoice;
-        utter.lang = selectedVoice.lang;
-      }
+        if (selectedVoice) {
+          utter.voice = selectedVoice;
+          utter.lang = selectedVoice.lang;
+        }
 
-      utter.onend = () => setIsSpeaking(false);
-      synth.speak(utter);
+        utter.onend = () => setIsSpeaking(false);
+        synth.speak(utter);
+      };
+
+      // If voices are not loaded yet, wait for them
+      if (synth.getVoices().length === 0) {
+        const handleVoicesChanged = () => {
+          speakWithVoices();
+          synth.removeEventListener("voiceschanged", handleVoicesChanged);
+        };
+        synth.addEventListener("voiceschanged", handleVoicesChanged);
+        // Also trigger loading voices
+        synth.getVoices();
+      } else {
+        speakWithVoices();
+      }
     }
   };
 
