@@ -79,15 +79,26 @@ const useWakeWordDetection = () => {
     if (Capacitor.isNativePlatform()) {
       try {
         // Request permissions before checking availability
-        await CapacitorSpeechRecognition.requestPermissions();
+        const permissionResult = await CapacitorSpeechRecognition.requestPermissions();
+        if (
+          !permissionResult ||
+          !permissionResult.speechRecognition ||
+          permissionResult.speechRecognition !== "granted"
+        ) {
+          console.error("Microphone permission not granted:", permissionResult);
+          setIsListening(false);
+          return false;
+        }
         const { available } = await CapacitorSpeechRecognition.available();
         if (!available) {
           console.error("Mobile speech recognition not available");
+          setIsListening(false);
           return false;
         }
         return true;
       } catch (e) {
         console.error("Mobile speech recognition init error:", e);
+        setIsListening(false);
         return false;
       }
     } else {
@@ -106,7 +117,6 @@ const useWakeWordDetection = () => {
 
     try {
       if (Capacitor.isNativePlatform()) {
-        // Use the aliased value here:
         await CapacitorSpeechRecognition.start({
           language: "en-US",
           maxResults: 2,
@@ -114,6 +124,13 @@ const useWakeWordDetection = () => {
           partialResults: true,
           popup: false,
         });
+        // Optionally, add a timeout to auto-stop listening after a duration
+        setTimeout(() => {
+          if (isListeningRef.current) {
+            console.warn("Listening timed out, stopping recognition.");
+            stopListening();
+          }
+        }, LISTENING_DURATION);
       } else {
         const SpeechRecognitionAPI =
           window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -195,6 +212,7 @@ const useWakeWordDetection = () => {
       }
     } catch (error) {
       console.error("Error starting recognition:", error);
+      setIsListening(false);
       if (isListeningRef.current) {
         retryCountRef.current++;
         if (retryCountRef.current <= MAX_RETRIES) {
