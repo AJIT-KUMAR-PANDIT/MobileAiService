@@ -16,6 +16,8 @@ import prompts from "@/data/prompts.json";
 import { generateWakeupSound } from "@/utils/generateWakeupSound";
 import { useIndianVoice } from "../hooks/useIndianVoice";
 import { Capacitor } from "@capacitor/core";
+import { SpeechRecognition } from "@capacitor-community/speech-recognition";
+import { Device } from "@capacitor/device";
 
 // Create a placeholder URL for the wakeup sound
 const DEFAULT_SOUND_URL =
@@ -56,6 +58,23 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   // Use the theme context
   const { mode: themeMode } = useTheme();
 
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        // Request microphone and speech recognition permissions
+        await SpeechRecognition.requestPermissions();
+        // Optionally, check device info for platform-specific logic
+        const info = await Device.getInfo();
+        console.log("Running on:", info.platform);
+      } catch (err) {
+        console.error("Permission error:", err);
+      }
+    };
+
+    if (isVisible) {
+      requestPermissions();
+    }
+  }, [isVisible]);
   // Generate wakeup sound when component mounts
   useEffect(() => {
     async function createSound() {
