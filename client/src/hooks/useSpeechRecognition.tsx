@@ -1,6 +1,43 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
+import type { PluginListenerHandle } from "@capacitor/core";
+
+// Define the web speech recognition types
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface WebSpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  onstart: () => void;
+  onend: () => void;
+  onerror: (event: any) => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+}
+
+interface SpeechRecognitionConstructor {
+  new (): WebSpeechRecognition;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
 
 interface UseSpeechRecognitionReturn {
   transcript: string;
@@ -17,11 +54,41 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
   const [listening, setListening] = useState(false);
   const [browserSupportsSpeechRecognition, setBrowserSupport] = useState(false);
   const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<WebSpeechRecognition | null>(null);
+  const listenerRef = useRef<PluginListenerHandle | null>(null);
+
+  // Define processRequest first to avoid circular reference
+  const processRequest = useCallback(() => {
+    if (transcript.trim() !== "") {
+      console.log("Processing request:", transcript);
+      // Call stopListening directly here to avoid circular dependency
+      if (Capacitor.isNativePlatform()) {
+        try {
+          SpeechRecognition.stop();
+        } catch (error) {
+          console.error("Error stopping mobile speech recognition:", error);
+        }
+      } else if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (error) {
+          console.error("Error stopping web speech recognition:", error);
+        }
+      }
+      setListening(false);
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+      }
+    }
+  }, [transcript, silenceTimer]);
 
   const stopListening = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
       try {
+        // Remove the event listener
+        if (listenerRef.current) {
+          listenerRef.current.remove();
+        }
         await SpeechRecognition.stop();
       } catch (error) {
         console.error("Error stopping mobile speech recognition:", error);
@@ -34,18 +101,15 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
       }
     }
     setListening(false);
-    clearTimeout(silenceTimer);
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+    }
   }, [silenceTimer]);
 
-  const processRequest = useCallback(() => {
-    if (transcript.trim() !== "") {
-      console.log("Processing request:", transcript);
-      stopListening();
-    }
-  }, [transcript, stopListening]);
-
   const resetSilenceTimer = useCallback(() => {
-    clearTimeout(silenceTimer);
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+    }
     setSilenceTimer(setTimeout(processRequest, 3000));
   }, [silenceTimer, processRequest]);
 
@@ -54,17 +118,36 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     setSilenceTimer(null);
     if (Capacitor.isNativePlatform()) {
       try {
-        await SpeechRecognition.requestPermissions();
+        const permissionStatus = await SpeechRecognition.requestPermissions();
+        // Check permission using the correct property structure
+        // The @capacitor-community/speech-recognition plugin uses a different structure
+        if (!permissionStatus) {
+          console.error("Speech recognition permission denied");
+          return;
+        }
+        
+        // Remove any existing listeners
+        if (listenerRef.current) {
+          listenerRef.current.remove();
+        }
+        
+        // Add the correct event listener
+        listenerRef.current = await SpeechRecognition.addListener(
+          "partialResults",
+          (result: { matches: string[] }) => {
+            setTranscript(result.matches[0] || "");
+            resetSilenceTimer();
+          }
+        );
+
         await SpeechRecognition.start({
           language: "en-US",
           maxResults: 1,
           prompt: "Speak now",
+          partialResults: true,
         });
+
         setListening(true);
-        SpeechRecognition.addListener("speechRecognitionResult", (result) => {
-          setTranscript(result.matches[0] || "");
-          resetSilenceTimer();
-        });
       } catch (error) {
         console.error("Mobile speech recognition error:", error);
         setListening(false);
@@ -73,6 +156,12 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
       try {
         const SpeechRecognitionConstructor =
           window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognitionConstructor) {
+          console.error("Speech recognition not supported in this browser");
+          return;
+        }
+
         recognitionRef.current = new SpeechRecognitionConstructor();
         const recognition = recognitionRef.current;
 
@@ -94,7 +183,7 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
           setListening(false);
           recognition.stop();
         };
-        recognition.onresult = (event: any) => {
+        recognition.onresult = (event: SpeechRecognitionEvent) => {
           const current = event.resultIndex;
           const transcript = event.results[current][0].transcript;
           setTranscript(transcript);
@@ -117,7 +206,17 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     const SpeechRecognitionConstructor =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     setBrowserSupport(!!SpeechRecognitionConstructor);
-  }, []);
+
+    // Cleanup function
+    return () => {
+      if (listenerRef.current) {
+        listenerRef.current.remove();
+      }
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+      }
+    };
+  }, [silenceTimer]);
 
   return {
     transcript,

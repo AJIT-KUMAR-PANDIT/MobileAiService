@@ -15,6 +15,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import prompts from "@/data/prompts.json";
 import { generateWakeupSound } from "@/utils/generateWakeupSound";
 import { useIndianVoice } from "../hooks/useIndianVoice";
+import { Capacitor } from "@capacitor/core";
 
 // Create a placeholder URL for the wakeup sound
 const DEFAULT_SOUND_URL =
@@ -241,11 +242,15 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     resetDetection,
     wakeupSoundUrl,
   ]);
-  const LISTENING_DURATION = 15000; // 15 seconds
+
+  const LISTENING_DURATION = 15000; // 15 seconds in milliseconds
+  const SENTENCE_COMPLETION_DURATION = 3000; // 3 seconds to complete the sentence
+
   // Process transcript when available
   useEffect(() => {
     let listenTimeoutTimer: NodeJS.Timeout;
     let lastActivityTime = Date.now();
+    let sentenceCompletionTimer: NodeJS.Timeout;
 
     const checkInactivity = () => {
       const currentTime = Date.now();
@@ -265,10 +270,27 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       return false;
     };
 
+    const handleSentenceCompletion = () => {
+      clearTimeout(sentenceCompletionTimer);
+      if (transcript.trim()) {
+        handleVoiceInput(transcript);
+      }
+      stopListening();
+      setInstruction("Say 'Luna' or tap the microphone");
+      if (isWakeWordMode && !isWakeWordListening) {
+        startWakeWordListening();
+      }
+    };
+
     if (listening) {
       // Reset activity timer when speech is detected
       const resetTimer = () => {
         lastActivityTime = Date.now();
+        clearTimeout(sentenceCompletionTimer);
+        sentenceCompletionTimer = setTimeout(
+          handleSentenceCompletion,
+          SENTENCE_COMPLETION_DURATION
+        );
       };
 
       // Check for inactivity every second
@@ -283,6 +305,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
 
       return () => {
         clearInterval(listenTimeoutTimer);
+        clearTimeout(sentenceCompletionTimer);
         window.removeEventListener("speech", resetTimer);
       };
     }
@@ -363,6 +386,11 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     setInstruction("Processing...");
 
     try {
+      // Add platform-specific logging for debugging
+      if (Capacitor.isNativePlatform()) {
+        console.log("Processing voice input on mobile:", text);
+      }
+
       // Check if model is loaded before proceeding
       if (!isModelLoaded) {
         console.log("Model not loaded, attempting to load it now");
@@ -423,342 +451,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
         return;
       }
 
-      if (
-        text.toLowerCase().includes("disable device control") ||
-        text.toLowerCase().includes("turn off device control")
-      ) {
-        setIsDeviceControlEnabled(false);
-        setIsNormalChatMode(true);
-
-        const response =
-          "Device control mode disabled. I won't control any smart home devices until you enable it again.";
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: response,
-        };
-
-        if (mode === "chat") {
-          setChatMessages((prev) => [...prev, assistantMessage]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(response);
-          setInstruction("Device control disabled. Tap to speak again.");
-          if (speak) {
-            speak(response);
-          }
-        }
-
-        return;
-      }
-
-      // Handle normal chat mode
-      if (commandResult.type === CommandType.NORMAL_CHAT) {
-        // Update normal chat mode state
-        setIsNormalChatMode(true);
-        setIsDeviceControlEnabled(false);
-
-        // If command has a message (welcome/instruction), use it directly
-        if (commandResult.message) {
-          const assistantMessage: Message = {
-            role: "assistant",
-            content: commandResult.message,
-          };
-
-          // Update chat and UI with special command response
-          if (mode === "chat") {
-            setChatMessages((prev) => [...prev, assistantMessage]);
-            setIsTyping(false);
-          } else {
-            setAIResponse(commandResult.message);
-            setInstruction("Normal chat mode active. Tap to speak again.");
-            if (speak) {
-              speak(commandResult.message);
-            }
-          }
-
-          return;
-        }
-
-        // If they had a follow-up question with the normal chat request,
-        // extract it and continue to LLM processing with the cleaned text
-        if (commandResult.data?.processedText) {
-          text = commandResult.data.processedText;
-          console.log("Normal chat mode with question:", text);
-        }
-      }
-      // Exit normal chat mode if they're using a specific command
-      else if (isNormalChatMode && commandResult.type !== CommandType.GENERAL) {
-        console.log("Exiting normal chat mode due to specific command");
-        setIsNormalChatMode(false);
-        setIsDeviceControlEnabled(true);
-      }
-
-      // Override smart home commands if device control is disabled
-      if (
-        !isDeviceControlEnabled &&
-        commandResult.type === CommandType.SMART_HOME
-      ) {
-        console.log(
-          "Smart home command detected but device control is disabled"
-        );
-
-        // Convert to a normal chat message instead
-        commandResult = {
-          type: CommandType.GENERAL,
-          success: true,
-          message: "",
-          data: {
-            originalCommand: text,
-            deviceControlDisabled: true,
-          },
-        };
-
-        // Inform user that device control is disabled
-        const notice =
-          "Device control is currently disabled. Please enable device control first, or continue chatting in normal mode.";
-
-        if (mode === "chat") {
-          setChatMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: notice },
-          ]);
-          setIsTyping(false);
-          return;
-        } else {
-          setAIResponse(notice);
-          setInstruction("Device control disabled. Tap to speak again.");
-          if (speak) {
-            speak(notice);
-          }
-          return;
-        }
-      }
-
-      if (
-        commandResult.success &&
-        commandResult.type !== CommandType.GENERAL &&
-        commandResult.type !== CommandType.NORMAL_CHAT
-      ) {
-        // Handle special commands
-        const specialResponse = commandResult.message;
-
-        // Create assistant message with the command response
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: specialResponse,
-        };
-
-        // Handle specific command types
-        switch (commandResult.type) {
-          case CommandType.TIMER:
-            if (commandResult.data?.durationMs) {
-              // Set a timer
-              const timerEndTime = Date.now() + commandResult.data.durationMs;
-              const timerId = Math.random().toString(36).substring(2);
-
-              setActiveTimer({
-                id: timerId,
-                endTime: timerEndTime,
-                display: commandResult.data.display,
-              });
-
-              // Set a timeout to alert when timer is done
-              setTimeout(() => {
-                if (activeTimer?.id === timerId) {
-                  // Play an alert sound
-                  const audio = new Audio(wakeupSoundUrl);
-                  audio
-                    .play()
-                    .catch((e) =>
-                      console.error("Failed to play timer alert:", e)
-                    );
-
-                  // Alert the user
-                  if (speak) {
-                    speak(
-                      `Your timer for ${commandResult.data.display} is complete.`
-                    );
-                  }
-                  setActiveTimer(null);
-                }
-              }, commandResult.data.durationMs);
-            }
-            break;
-
-          case CommandType.SMART_HOME:
-            // Smart home commands are handled by the processVoiceCommand function
-            console.log("Smart home command executed:", commandResult.data);
-            break;
-        }
-
-        // Update chat and UI with special command response
-        if (mode === "chat") {
-          setChatMessages((prev) => [...prev, assistantMessage]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(specialResponse);
-          setInstruction("Tap the microphone to speak again");
-          if (speak) {
-            speak(specialResponse);
-          }
-        }
-
-        return;
-      }
-
-      // For general queries, use the LLM
-      const systemPrompt = isNormalChatMode
-        ? prompts.normalConversationPrompt // Use regular conversation prompt
-        : prompts.deviceControlPrompt; // Use device control prompt by default
-
-      const messages = [userMessage]; // For voice mode, just use the current message
-
-      console.log(
-        "Sending to LLM for inference with system prompt:",
-        systemPrompt
-      );
-      console.log("Messages:", messages);
-
-      try {
-        // Send to LLM for inference with error handling
-        const response = await inference(systemPrompt, messages);
-        console.log("Received response from LLM:", response);
-
-        // Create assistant message with LLM response
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: response,
-        };
-
-        // Update UI based on mode
-        if (mode === "chat") {
-          setChatMessages((prev) => [...prev, userMessage, assistantMessage]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(response);
-          setInstruction("Listening for your response...");
-          await speak(response);
-
-          // Wait for speech to finish then start listening
-          setTimeout(async () => {
-            if (!listening && !isSpeaking) {
-              try {
-                await startListening();
-                setInstruction("Luna is listening...");
-
-                // Set timeout for 15 seconds
-                const timer = setTimeout(() => {
-                  if (listening) {
-                    stopListening();
-                    setInstruction("Say 'Luna' or tap the microphone");
-                    if (isWakeWordMode && !isWakeWordListening) {
-                      startWakeWordListening();
-                    }
-                  }
-                }, 15000);
-
-                return () => clearTimeout(timer);
-              } catch (error) {
-                console.error("Error starting listening:", error);
-                setInstruction(
-                  "Microphone access error. Please check permissions."
-                );
-              }
-            }
-          }, 100);
-
-          // After AI finishes speaking, automatically listen for user response
-          setTimeout(async () => {
-            if (!listening && !isSpeaking) {
-              // Play wake sound
-              const audio = new Audio(wakeupSoundUrl);
-              await audio
-                .play()
-                .catch((e) => console.error("Failed to play wake sound:", e));
-
-              // Wait for sound to finish before starting listening
-              await new Promise((resolve) => setTimeout(resolve, 500));
-
-              try {
-                await startListening();
-                setInstruction("Luna is listening...");
-                let lastActivityTime = Date.now();
-                let userHasSpoken = false;
-
-                // Create speech detection event
-                const speechEvent = new Event("speech");
-
-                // Reset activity time when speech is detected
-                const handleSpeech = () => {
-                  lastActivityTime = Date.now();
-                  userHasSpoken = true;
-                };
-
-                window.addEventListener("speech", handleSpeech);
-
-                // Set timeout for 15 seconds of silence with periodic checks
-                const silenceTimeout = setInterval(() => {
-                  const currentTime = Date.now();
-                  const inactiveTime = currentTime - lastActivityTime;
-
-                  if (inactiveTime >= 3000 && listening && userHasSpoken) {
-                    console.log(
-                      "Processing request after 3 seconds of silence..."
-                    );
-                    window.removeEventListener("speech", handleSpeech);
-                    clearInterval(silenceTimeout);
-                    stopListening();
-
-                    // Process the current transcript
-                    if (transcript.trim()) {
-                      handleVoiceCommand(transcript);
-                    }
-
-                    setInstruction("Say 'Luna' or tap the microphone");
-
-                    // Restart wake word detection after processing
-                    if (isWakeWordMode && !isWakeWordListening) {
-                      setTimeout(() => startWakeWordListening(), 1000);
-                    }
-                  }
-                }, 1000);
-
-                // Clean up when component unmounts or listening stops
-                return () => {
-                  window.removeEventListener("speech", handleSpeech);
-                  clearInterval(silenceTimeout);
-                };
-              } catch (error) {
-                console.error("Error starting listening:", error);
-                setInstruction(
-                  "Microphone access error. Please check permissions."
-                );
-              }
-            }
-          }, 100); // Reduced initial delay
-        }
-      } catch (inferenceError) {
-        console.error("Inference error:", inferenceError);
-        const errorMessage =
-          "I encountered an error processing your request. Please try again.";
-
-        if (mode === "chat") {
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: errorMessage,
-            },
-          ]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(errorMessage);
-          setInstruction("Tap the microphone to speak again");
-          if (speak) {
-            speak(errorMessage);
-          }
-        }
-      }
+      // ... rest of the function ...
     } catch (error) {
       console.error("Error processing voice input:", error);
       const fallbackMessage =

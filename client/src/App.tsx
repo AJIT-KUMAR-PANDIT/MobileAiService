@@ -10,6 +10,7 @@ import { syncCacheToIndexDbOnStartup } from "./utils/cacheToIndexDb";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { Capacitor } from "@capacitor/core";
+import { PermissionsManager } from "./utils/PermissionsManager";
 import "./index.css";
 
 function Router() {
@@ -32,6 +33,9 @@ function App() {
     const initCapacitor = async () => {
       if (Capacitor.isNativePlatform()) {
         try {
+          // Request all necessary permissions
+          await PermissionsManager.requestAllPermissions();
+          
           await SplashScreen.hide();
           await StatusBar.setStyle({ style: Style.Dark });
           if (Capacitor.getPlatform() === "android") {

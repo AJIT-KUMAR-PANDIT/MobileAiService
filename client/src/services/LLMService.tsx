@@ -486,6 +486,8 @@ export const useLLMService = (options = defaultModelOptions) => {
         readableName = "Llama 3.2 1B";
       } else if (modelId.includes("Llama")) {
         readableName = "Llama 2";
+      } else {
+        readableName = "Luna";
       }
 
       console.log("Model readable name:", readableName);
