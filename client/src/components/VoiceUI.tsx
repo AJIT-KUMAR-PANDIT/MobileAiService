@@ -1,5 +1,6 @@
 import { FC, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useIndianVoice } from "../hooks/useIndianVoice";
 
 interface VoiceUIProps {
   isActive: boolean;
@@ -418,7 +419,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         }
 
         if (voice) {
-          console.log("Selected voice:", voice.name, voice.lang);
           selectedVoiceRef.current = voice;
         }
       };
@@ -824,10 +824,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
                     : "bg-gray-700 border border-gray-600 text-gray-200"
                 }`}
                 value={voicePreference}
-                onChange={(e) => {
-                  // This would be handled by the parent component
-                  console.log("Voice preference changed:", e.target.value);
-                }}
+                onChange={handleVoicePreferenceChange}
               >
                 <option value="indian-female">Indian Female</option>
                 <option value="british-male">British Male</option>
@@ -952,4 +949,14 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       )}
     </motion.div>
   );
+};
+
+// Add this function before your return statement
+const handleVoicePreferenceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const newVoice = e.target.value;
+  // If you want to persist the selection
+  localStorage.setItem("voicePreference", newVoice);
+  // If you want to update the prop/state (if you have a setter)
+  // setVoicePreference(newVoice); // Uncomment if you have this state
+  // If you want to notify parent, call a prop function here if available
 };

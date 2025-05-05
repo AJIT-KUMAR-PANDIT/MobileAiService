@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
-export function useIndianVoice() {
+// Accept voicePreference as a parameter
+export function useIndianVoice(voicePreference: string = "indian-female") {
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   const speak = async (text: string) => {
@@ -11,9 +12,12 @@ export function useIndianVoice() {
 
     if (Capacitor.isNativePlatform()) {
       // Use Capacitor TTS plugin for native
+      let lang = "en-IN";
+      if (voicePreference === "british-male") lang = "en-GB";
+      if (voicePreference === "american-female") lang = "en-US";
       await TextToSpeech.speak({
         text,
-        lang: "en-IN", // Use Indian English
+        lang,
         rate: 1.0,
         pitch: 1.0,
         volume: 1.0,
@@ -24,22 +28,44 @@ export function useIndianVoice() {
       // Use browser TTS for web
       const synth = window.speechSynthesis;
       const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = "en-IN";
-      // Try to select a female Indian English voice
-      const voices = synth.getVoices();
-      const femaleIndianVoice =
-        voices.find(
-          (v) =>
-            v.lang === "en-IN" &&
-            (v.name.toLowerCase().includes("female") ||
-              v.name.toLowerCase().includes("woman") ||
-              v.name.toLowerCase().includes("girl"))
-        ) ||
-        voices.find((v) => v.lang === "en-IN" && v.name.toLowerCase().includes("india")) ||
-        voices.find((v) => v.lang === "en-IN");
-      if (femaleIndianVoice) {
-        utter.voice = femaleIndianVoice;
+
+      let voices = synth.getVoices();
+      let selectedVoice: SpeechSynthesisVoice | undefined;
+
+      if (voicePreference === "indian-female") {
+        // Prefer Hindi female, then Indian English female
+        selectedVoice =
+          voices.find(
+            (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
+          ) ||
+          voices.find(
+            (v) =>
+              (v.lang === "en-IN" || v.name.toLowerCase().includes("indian")) &&
+              v.name.toLowerCase().includes("female")
+          );
+      } else if (voicePreference === "british-male") {
+        selectedVoice = voices.find(
+          (v) => v.lang === "en-GB" && v.name.toLowerCase().includes("male")
+        );
+      } else if (voicePreference === "american-female") {
+        selectedVoice = voices.find(
+          (v) => v.lang === "en-US" && v.name.toLowerCase().includes("female")
+        );
       }
+
+      // Fallbacks
+      if (!selectedVoice) {
+        selectedVoice = voices.find((v) => v.name.toLowerCase().includes("female"));
+      }
+      if (!selectedVoice && voices.length > 0) {
+        selectedVoice = voices[0];
+      }
+
+      if (selectedVoice) {
+        utter.voice = selectedVoice;
+        utter.lang = selectedVoice.lang;
+      }
+
       utter.onend = () => setIsSpeaking(false);
       synth.speak(utter);
     }
@@ -58,6 +84,6 @@ export function useIndianVoice() {
     speak,
     cancel,
     isSpeaking,
-    selectedVoice: "en-IN",
+    selectedVoice: voicePreference,
   };
 }
