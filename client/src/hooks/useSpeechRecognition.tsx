@@ -119,19 +119,18 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     if (Capacitor.isNativePlatform()) {
       try {
         const permissionStatus = await SpeechRecognition.requestPermissions();
-        console.log("PermissionStatus:", permissionStatus); // Log the object
-
-        // Check if permission is granted using the correct property structure
-        if (!permissionStatus || permissionStatus.granted !== true) {
+        // Check permission using the correct property structure
+        // The @capacitor-community/speech-recognition plugin uses a different structure
+        if (!permissionStatus) {
           console.error("Speech recognition permission denied");
           return;
         }
-
+        
         // Remove any existing listeners
         if (listenerRef.current) {
           listenerRef.current.remove();
         }
-
+        
         // Add the correct event listener
         listenerRef.current = await SpeechRecognition.addListener(
           "partialResults",

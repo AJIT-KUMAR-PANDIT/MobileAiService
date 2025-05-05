@@ -44,9 +44,9 @@ export class PermissionsManager {
       const { available } = await SpeechRecognition.available();
       if (available) {
         const permissionStatus = await SpeechRecognition.requestPermissions();
-        console.log("PermissionStatus:", permissionStatus); // Log the object
-
-        if (permissionStatus.granted !== true) {
+        // Fix: The SpeechRecognition plugin doesn't use 'state' property
+        // Instead, check if permission was granted based on the returned object
+        if (!permissionStatus) {
           await Toast.show({
             text: "Microphone permission is needed for voice features",
             duration: "long",
