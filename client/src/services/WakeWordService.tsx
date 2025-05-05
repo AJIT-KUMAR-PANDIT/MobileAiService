@@ -1,61 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
-import { SpeechRecognition } from "@capacitor-community/speech-recognition";
-
-// Define types for browser speech recognition API
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-  isFinal?: boolean;
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onend: ((event: Event) => void) | null;
-  onerror: ((event: Event) => void) | null;
-  onnomatch: ((event: Event) => void) | null;
-  onstart: ((event: Event) => void) | null;
-  onaudiostart: ((event: Event) => void) | null;
-  onaudioend: ((event: Event) => void) | null;
-  onsoundstart: ((event: Event) => void) | null;
-  onsoundend: ((event: Event) => void) | null;
-  onspeechstart: ((event: Event) => void) | null;
-  onspeechend: ((event: Event) => void) | null;
-}
-
-interface SpeechRecognitionConstructor {
-  new (): SpeechRecognition;
-}
-
-// Augment the window object to include speech recognition
-declare global {
-  interface Window {
-    SpeechRecognition?: SpeechRecognitionConstructor;
-    webkitSpeechRecognition?: SpeechRecognitionConstructor;
-  }
-}
+// Add this line back, but alias it to avoid confusion:
+import { SpeechRecognition as CapacitorSpeechRecognition } from "@capacitor-community/speech-recognition";
 
 const WAKE_WORD = "luna";
 const CONFIDENCE_THRESHOLD = 0.001; // Extremely low threshold for better detection
@@ -64,6 +10,21 @@ const WAKE_WORD_TIMEOUT = 20000; // Extended timeout for better chance of detect
 const RETRY_DELAY = 3000; // Increased delay between retries
 const MAX_RETRIES = 10; // Increased retries
 const LISTENING_DURATION = 15000; // 15 seconds listening duration
+
+// Ensure the global types for SpeechRecognition are correctly augmented
+declare global {
+  interface Window {
+    SpeechRecognition?: typeof window.SpeechRecognition;
+    webkitSpeechRecognition?: typeof window.webkitSpeechRecognition;
+  }
+}
+
+// Add this workaround if TypeScript cannot find the type
+type SpeechRecognition = typeof window.SpeechRecognition extends {
+  new (): infer R;
+}
+  ? R
+  : any;
 
 const useWakeWordDetection = () => {
   const [isListening, setIsListening] = useState(false);
@@ -117,8 +78,13 @@ const useWakeWordDetection = () => {
   const initializeRecognition = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
       try {
-        await SpeechRecognition.available();
-        await SpeechRecognition.requestPermission();
+        // Request permissions before checking availability
+        await CapacitorSpeechRecognition.requestPermissions();
+        const { available } = await CapacitorSpeechRecognition.available();
+        if (!available) {
+          console.error("Mobile speech recognition not available");
+          return false;
+        }
         return true;
       } catch (e) {
         console.error("Mobile speech recognition init error:", e);
@@ -140,7 +106,8 @@ const useWakeWordDetection = () => {
 
     try {
       if (Capacitor.isNativePlatform()) {
-        await SpeechRecognition.start({
+        // Use the aliased value here:
+        await CapacitorSpeechRecognition.start({
           language: "en-US",
           maxResults: 2,
           prompt: "Listening for wake word...",
@@ -158,11 +125,15 @@ const useWakeWordDetection = () => {
           recognition.interimResults = true;
           recognition.lang = "en-US";
 
-          recognition.onresult = (event) => {
-            const results = Array.from(event.results).map((result) => ({
-              transcript: result[0].transcript.toLowerCase(),
-              confidence: result[0].confidence,
-            }));
+          recognition.onresult = (event: any) => {
+            const results = Array.from(event.results).map((result) => {
+              // Fix: Cast result to any so you can safely access [0] or item(0)
+              const alternative = (result as any)[0] || (result as any).item(0);
+              return {
+                transcript: alternative.transcript.toLowerCase(),
+                confidence: alternative.confidence,
+              };
+            });
 
             const wakeWordResult = results.find((r) =>
               r.transcript.includes(WAKE_WORD)
@@ -177,11 +148,11 @@ const useWakeWordDetection = () => {
           };
 
           recognition.onend = () => {
+            recognitionRef.current = null;
             if (isListeningRef.current) {
-              // Only restart if we're still meant to be listening
               setTimeout(() => {
                 if (isListeningRef.current && !recognitionRef.current) {
-                  retryCountRef.current = 0; // Reset retries on clean restart
+                  retryCountRef.current = 0;
                   startRecognition();
                 }
               }, RECOGNITION_INTERVAL);
@@ -191,13 +162,11 @@ const useWakeWordDetection = () => {
           recognition.onerror = (event: any) => {
             console.error("Recognition error:", event.error);
             if (isListeningRef.current) {
-              // Only increment retries for non-aborted errors
               if (event.error !== "aborted") {
                 retryCountRef.current++;
               }
 
               if (retryCountRef.current <= MAX_RETRIES) {
-                // Exponential backoff for retry delay
                 const backoffDelay =
                   RETRY_DELAY * Math.pow(1.5, retryCountRef.current - 1);
                 setTimeout(() => {
@@ -212,7 +181,6 @@ const useWakeWordDetection = () => {
                 console.error("Max retries exceeded, restarting recognition");
                 retryCountRef.current = 0;
                 stopListening();
-                // Attempt to restart after a longer delay
                 setTimeout(() => {
                   if (isListeningRef.current) {
                     startRecognition();
@@ -256,7 +224,6 @@ const useWakeWordDetection = () => {
     setIsListening(true);
     retryCountRef.current = 0;
 
-    // Start recognition after a short delay
     setTimeout(() => {
       startRecognition();
     }, 100);
