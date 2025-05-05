@@ -18,7 +18,8 @@ import { useIndianVoice } from "../hooks/useIndianVoice";
 import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 import { Device } from "@capacitor/device";
-
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Camera } from "@capacitor/camera";
 // Create a placeholder URL for the wakeup sound
 const DEFAULT_SOUND_URL =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAA=";
@@ -59,10 +60,34 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
   const { mode: themeMode } = useTheme();
 
   useEffect(() => {
-    const requestPermissions = async () => {
+    const requestAllPermissions = async () => {
       try {
         // Request microphone and speech recognition permissions
         await SpeechRecognition.requestPermissions();
+
+        // Request file storage permissions (Android)
+        if (Capacitor.getPlatform() === "android") {
+          // Request WRITE_EXTERNAL_STORAGE and READ_EXTERNAL_STORAGE
+          if (
+            window &&
+            (window as any).cordova &&
+            (window as any).cordova.plugins
+          ) {
+            // Cordova/Capacitor hybrid: fallback for older plugins
+            // (Optional: add your own logic here if needed)
+          } else if ((navigator as any).permissions) {
+            // Modern web: fallback (not always supported)
+            await (navigator as any).permissions.query({
+              name: "persistent-storage",
+            });
+          }
+          // Using Filesystem plugin to request permission
+          await Filesystem.requestPermissions();
+        }
+
+        // Request photo/media permissions (iOS/Android)
+        await Camera.requestPermissions();
+
         // Optionally, check device info for platform-specific logic
         const info = await Device.getInfo();
         console.log("Running on:", info.platform);
@@ -72,7 +97,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     };
 
     if (isVisible) {
-      requestPermissions();
+      requestAllPermissions();
     }
   }, [isVisible]);
   // Generate wakeup sound when component mounts
