@@ -25,6 +25,21 @@ export function useIndianVoice() {
       const synth = window.speechSynthesis;
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = "en-IN";
+      // Try to select a female Indian English voice
+      const voices = synth.getVoices();
+      const femaleIndianVoice =
+        voices.find(
+          (v) =>
+            v.lang === "en-IN" &&
+            (v.name.toLowerCase().includes("female") ||
+              v.name.toLowerCase().includes("woman") ||
+              v.name.toLowerCase().includes("girl"))
+        ) ||
+        voices.find((v) => v.lang === "en-IN" && v.name.toLowerCase().includes("india")) ||
+        voices.find((v) => v.lang === "en-IN");
+      if (femaleIndianVoice) {
+        utter.voice = femaleIndianVoice;
+      }
       utter.onend = () => setIsSpeaking(false);
       synth.speak(utter);
     }

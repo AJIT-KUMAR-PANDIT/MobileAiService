@@ -13,6 +13,7 @@ interface VoiceUIProps {
   isWakeWordMode?: boolean; // <-- Add this
   isWakeWordListening?: boolean; // <-- Add this
   onWakeWordDetected?: () => void; // <-- Add this
+  onProcessVoiceInput: (text: string) => Promise<void>;
 }
 
 export const VoiceUI: FC<VoiceUIProps> = ({

@@ -119,7 +119,10 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
     if (Capacitor.isNativePlatform()) {
       try {
         const permissionStatus = await SpeechRecognition.requestPermissions();
-        if (!permissionStatus || permissionStatus.speechRecognition !== 'granted') {
+        if (
+          !permissionStatus ||
+          permissionStatus.speechRecognition !== "granted"
+        ) {
           console.error("Speech recognition permission denied");
           return;
         }
@@ -179,7 +182,14 @@ const useSpeechRecognition = (): UseSpeechRecognitionReturn => {
           } else if (event.error === "aborted") {
             return;
           } else {
-            console.error("Web speech recognition error:", event.error);
+            if (event.error === "network") {
+              // Notify the user about the network error
+              console.log(
+                "Speech recognition network error. Please check your internet connection."
+              );
+            } else {
+              console.log(`Speech recognition error: ${event.error}`);
+            }
           }
           setListening(false);
           recognition.stop();

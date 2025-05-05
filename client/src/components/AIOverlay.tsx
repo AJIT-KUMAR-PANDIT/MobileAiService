@@ -405,93 +405,78 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     }
   };
 
+  // ... existing code ...
+
+  // ... existing code ...
+  // ... existing code ...
+
   const handleVoiceInput = async (text: string) => {
-    setIsConversationActive(true); // Set conversation active
+    setIsConversationActive(true);
     if (!text.trim()) return;
-    console.log("Voice input received:", text);
     setInstruction("Processing...");
 
+    // Always use plain JS objects/arrays for messages
+    const systemPrompt = isNormalChatMode
+      ? prompts.normalConversationPrompt
+      : prompts.deviceControlPrompt;
+
+    const userMessage: Message = { role: "user", content: text };
+    // Ensure chatMessages is a plain array of plain objects
+    const messages: Message[] = [...chatMessages, userMessage];
+
     try {
-      // Add platform-specific logging for debugging
-      if (Capacitor.isNativePlatform()) {
-        console.log("Processing voice input on mobile:", text);
-      }
+      // Pass only plain JS objects/arrays to inference
+      const response = await inference(systemPrompt, messages);
 
-      // Check if model is loaded before proceeding
-      if (!isModelLoaded) {
-        console.log("Model not loaded, attempting to load it now");
-        try {
-          await loadModel();
-        } catch (loadError) {
-          console.error("Failed to load model:", loadError);
-          setAIResponse(
-            "I'm having trouble loading my AI model. Please try again in a moment."
-          );
-          setInstruction("Tap the microphone to speak again");
-          if (speak) {
-            speak(
-              "I'm having trouble loading my AI model. Please try again in a moment."
-            );
-          }
-          return;
-        }
-      }
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: response,
+      };
 
-      const userMessage: Message = { role: "user", content: text };
+      const updatedMessages = [...chatMessages, userMessage, assistantMessage];
 
-      // Add user message to chat history
-      if (mode === "chat") {
-        setChatMessages((prev) => [...prev, userMessage]);
-        setIsTyping(true);
-      }
+      setChatMessages(updatedMessages);
+      setAIResponse(response);
 
-      // Check if this is a special command
-      let commandResult = await processVoiceCommand(text);
-
-      // Check for enabling/disabling device control explicitly
-      if (
-        text.toLowerCase().includes("enable device control") ||
-        text.toLowerCase().includes("turn on device control")
-      ) {
-        setIsDeviceControlEnabled(true);
-        setIsNormalChatMode(false);
-
-        const response =
-          "Device control mode enabled. I can now control your smart home devices.";
-        const assistantMessage: Message = {
-          role: "assistant",
-          content: response,
-        };
-
-        if (mode === "chat") {
-          setChatMessages((prev) => [...prev, assistantMessage]);
-          setIsTyping(false);
-        } else {
-          setAIResponse(response);
-          setInstruction("Device control enabled. Tap to speak again.");
-          if (speak) {
-            speak(response);
-          }
-        }
-
-        return;
-      }
-
-      // ... rest of the function ...
-    } catch (error) {
-      console.error("Error processing voice input:", error);
-      const fallbackMessage =
-        "I'm sorry, I couldn't process that request. Please try again.";
-
-      setAIResponse(fallbackMessage);
-      setInstruction("Tap the microphone to speak again");
       if (speak) {
-        speak(fallbackMessage);
+        speak(response);
       }
+    } catch (inferenceError) {
+      // Add detailed error logging for WASM binding errors
+      if (
+        inferenceError &&
+        typeof inferenceError === "object" &&
+        "message" in inferenceError &&
+        (inferenceError as any).message.includes("BindingError")
+      ) {
+        console.error(
+          "LLM inference BindingError: This usually means a WASM object (like VectorInt) was passed from the wrong context. Ensure you only pass plain JS arrays/objects to inference.",
+          inferenceError
+        );
+      } else {
+        console.error("LLM inference error:", inferenceError);
+      }
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "I encountered an error processing your request. Please try again.",
+        },
+      ]);
+      setAIResponse(
+        "I encountered an error processing your request. Please try again."
+      );
     } finally {
       setIsTyping(false);
+      setInstruction("Say 'Luna' or tap the microphone");
     }
   };
+
+  // ... existing code ...
+  // ... existing code ...
+  // ... existing code ...
 
   const handleChatSend = async (message: string) => {
     if (!message.trim()) return;
@@ -1030,8 +1015,8 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 </button>
               </div>
             </div>
-
             {/* Voice UI or Chat UI based on mode */}
+            {/* ? // ... existing code ... */}
             {mode === "voice" ? (
               <VoiceUI
                 isActive={true}
@@ -1041,6 +1026,8 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 isSpeaking={isSpeaking}
                 isInferring={isInferring}
                 onRecordToggle={handleMicrophoneToggle}
+                // Add this prop to allow VoiceUI to trigger LLM inference directly if needed
+                onProcessVoiceInput={handleVoiceInput}
               />
             ) : (
               <ChatUI
@@ -1050,7 +1037,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 onSendMessage={handleChatSend}
               />
             )}
-
+            {/* // ... existing code ... */}
             {/* Model Download Status */}
             {isDownloading && (
               <ModelDownloadStatus
@@ -1060,7 +1047,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 totalSize={totalSize}
               />
             )}
-
             {/* Model Selector */}
             <ModelSelector
               currentModel={modelOptions.modelId}
