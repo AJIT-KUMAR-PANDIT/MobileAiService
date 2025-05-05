@@ -405,11 +405,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
     }
   };
 
-  // ... existing code ...
-
-  // ... existing code ...
-  // ... existing code ...
-
   const handleVoiceInput = async (text: string) => {
     setIsConversationActive(true);
     if (!text.trim()) return;
@@ -473,10 +468,6 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       setInstruction("Say 'Luna' or tap the microphone");
     }
   };
-
-  // ... existing code ...
-  // ... existing code ...
-  // ... existing code ...
 
   const handleChatSend = async (message: string) => {
     if (!message.trim()) return;
@@ -1016,7 +1007,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
               </div>
             </div>
             {/* Voice UI or Chat UI based on mode */}
-            {/* ? // ... existing code ... */}
+            {/* ?  */}
             {mode === "voice" ? (
               <VoiceUI
                 isActive={true}
@@ -1037,7 +1028,7 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
                 onSendMessage={handleChatSend}
               />
             )}
-            {/* // ... existing code ... */}
+            {/*  */}
             {/* Model Download Status */}
             {isDownloading && (
               <ModelDownloadStatus

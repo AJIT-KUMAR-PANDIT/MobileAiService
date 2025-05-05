@@ -9,11 +9,18 @@ interface VoiceUIProps {
   isSpeaking: boolean;
   isInferring: boolean;
   onRecordToggle: () => void;
-  voicePreference?: string; // Add voice preference prop
-  isWakeWordMode?: boolean; // <-- Add this
-  isWakeWordListening?: boolean; // <-- Add this
-  onWakeWordDetected?: () => void; // <-- Add this
+  voicePreference?: string;
+  isWakeWordMode?: boolean;
+  isWakeWordListening?: boolean;
+  onWakeWordDetected?: () => void;
   onProcessVoiceInput: (text: string) => Promise<void>;
+  // New props
+  speechRate?: number;
+  volume?: number;
+  onVolumeChange?: (volume: number) => void;
+  onSpeechRateChange?: (rate: number) => void;
+  enableVisualizations?: boolean;
+  theme?: "light" | "dark" | "auto";
 }
 
 export const VoiceUI: FC<VoiceUIProps> = ({
@@ -24,7 +31,18 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   isSpeaking,
   isInferring,
   onRecordToggle,
-  voicePreference = "indian-female", // Default to Indian female voice
+  voicePreference = "indian-female",
+  isWakeWordMode = false,
+  isWakeWordListening = false,
+  onWakeWordDetected,
+  onProcessVoiceInput,
+  // New props with defaults
+  speechRate = 1,
+  volume = 1,
+  onVolumeChange,
+  onSpeechRateChange,
+  enableVisualizations = true,
+  theme = "dark",
 }) => {
   const [speechStartTime, setSpeechStartTime] = useState(Date.now());
   const [subtitle, setSubtitle] = useState("");
@@ -33,6 +51,13 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   );
   const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
   const [lastSpeechTime, setLastSpeechTime] = useState(Date.now());
+  const [showControls, setShowControls] = useState(false);
+  const [visualizerData, setVisualizerData] = useState<number[]>(
+    Array(20).fill(5)
+  );
+  const [wakeWordStatus, setWakeWordStatus] = useState<
+    "idle" | "detected" | "listening"
+  >("idle");
 
   // Add voice selection logic
   const [availableVoices, setAvailableVoices] = useState<
@@ -40,12 +65,58 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   >([]);
   const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
+  // Refs for audio analysis
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (isWakeWordMode && isWakeWordListening) {
+      setWakeWordStatus("listening");
+      setSubtitle("Listening for wake word...");
+    } else if (isWakeWordMode && onWakeWordDetected) {
+      if (wakeWordStatus === "detected") {
+        const timer = setTimeout(() => {
+          setWakeWordStatus("idle");
+        }, 2000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isWakeWordMode, isWakeWordListening, onWakeWordDetected, wakeWordStatus]);
+
+  // Handle wake word detection
+  const handleWakeWordDetection = () => {
+    if (onWakeWordDetected) {
+      setWakeWordStatus("detected");
+      setSubtitle("Wake word detected!");
+      onWakeWordDetected();
+
+      // Reset after animation
+      setTimeout(() => {
+        setWakeWordStatus("listening");
+        setSubtitle("Listening for command...");
+      }, 1000);
+    }
+  };
+
   useEffect(() => {
     if (isSpeaking) {
       setSpeechStartTime(Date.now());
       setSpeakerType("assistant");
       setSubtitle("Luna is speaking...");
       setLastSpeechTime(Date.now());
+
+      // Create dynamic visualizer data for speaking
+      if (enableVisualizations) {
+        const interval = setInterval(() => {
+          setVisualizerData(
+            Array(20)
+              .fill(0)
+              .map(() => Math.floor(Math.random() * 25) + 5)
+          );
+        }, 100);
+        return () => clearInterval(interval);
+      }
 
       // Reset silence timer when assistant stops speaking
       if (silenceTimer) {
@@ -55,6 +126,11 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       setSpeakerType("user");
       setSubtitle("Listening to you...");
       setLastSpeechTime(Date.now());
+
+      // Setup audio analysis for microphone input if enabled
+      if (enableVisualizations && !analyserRef.current) {
+        setupAudioAnalysis();
+      }
 
       // Start silence timer when user starts speaking
       if (silenceTimer) {
@@ -67,6 +143,11 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       }, 3000);
       setSilenceTimer(timer);
     } else if (!isSpeaking && !isListening) {
+      // Clean up audio analysis
+      if (analyserRef.current) {
+        cleanupAudioAnalysis();
+      }
+
       // Only wait 15 seconds after assistant response
       if (speakerType === "assistant") {
         const timer = setTimeout(() => {
@@ -86,19 +167,106 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         clearTimeout(silenceTimer);
       }
     };
-  }, [isSpeaking, isListening, onRecordToggle, speakerType]);
+  }, [
+    isSpeaking,
+    isListening,
+    onRecordToggle,
+    speakerType,
+    enableVisualizations,
+  ]);
+
+  // Setup audio analysis for visualizations
+  const setupAudioAnalysis = async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext ||
+          (window as any).webkitAudioContext)();
+      }
+
+      if (!micStreamRef.current) {
+        micStreamRef.current = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+      }
+
+      const analyser = audioContextRef.current.createAnalyser();
+      analyser.fftSize = 64;
+
+      const source = audioContextRef.current.createMediaStreamSource(
+        micStreamRef.current
+      );
+      source.connect(analyser);
+
+      analyserRef.current = analyser;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const updateVisualizer = () => {
+        if (!analyserRef.current || !isListening) return;
+
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const normalizedData = Array.from(dataArray)
+          .slice(0, 20)
+          .map((value) => Math.max(5, Math.floor(value / 5)));
+
+        setVisualizerData(normalizedData);
+        requestAnimationFrame(updateVisualizer);
+      };
+
+      updateVisualizer();
+    } catch (err) {
+      console.error("Error setting up audio analysis:", err);
+    }
+  };
+
+  // Cleanup audio analysis
+  const cleanupAudioAnalysis = () => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((track) => track.stop());
+      micStreamRef.current = null;
+    }
+
+    if (analyserRef.current) {
+      analyserRef.current = null;
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+  };
 
   const getAnimationState = () => {
-    if (isListening) {
-      // Add pulsing animation to indicate 15s timeout
-      return "listening";
-    }
+    if (isWakeWordMode && isWakeWordListening) return "wakeword";
+    if (wakeWordStatus === "detected") return "detected";
+    if (isListening) return "listening";
     if (isSpeaking) return "speaking";
     if (isInferring) return "processing";
     return "idle";
   };
 
   const circleVariants = {
+    wakeword: {
+      scale: [1, 1.1, 1],
+      opacity: [0.6, 0.9, 0.6],
+      borderColor: ["#9333ea", "#7e22ce", "#9333ea"],
+      transition: {
+        duration: 2,
+        repeat: Infinity,
+        ease: "easeInOut",
+      },
+    },
+    detected: {
+      scale: [1, 1.3, 1],
+      opacity: [0.7, 1, 0.7],
+      borderColor: ["#16a34a", "#15803d", "#16a34a"],
+      transition: {
+        duration: 0.5,
+        repeat: 3,
+        ease: "easeInOut",
+      },
+    },
     listening: {
       scale: [1, 1.2, 1],
       opacity: [0.7, 1, 0.7],
@@ -136,25 +304,53 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   };
 
   const waveformVariants = {
-    listening: (i: number) => ({
-      height: ["10px", "30px", "10px"],
-      backgroundColor: ["#ef4444", "#dc2626", "#ef4444"],
+    wakeword: (i: number) => ({
+      height: ["8px", "18px", "8px"],
+      backgroundColor: ["#9333ea", "#7e22ce", "#9333ea"],
       transition: {
-        duration: 0.5,
+        duration: 0.8,
         repeat: Infinity,
         delay: i * 0.1,
         ease: "easeInOut",
       },
     }),
-    speaking: (i: number) => ({
-      height: ["15px", "25px", "15px"],
-      backgroundColor: ["#3b82f6", "#2563eb", "#3b82f6"],
+    detected: (i: number) => ({
+      height: ["20px", "40px", "20px"],
+      backgroundColor: ["#16a34a", "#15803d", "#16a34a"],
       transition: {
-        duration: 0.7,
-        repeat: Infinity,
-        delay: i * 0.15,
+        duration: 0.3,
+        repeat: 3,
+        delay: i * 0.05,
         ease: "easeInOut",
       },
+    }),
+    listening: (i: number) => ({
+      height: enableVisualizations
+        ? `${visualizerData[i % visualizerData.length]}px`
+        : ["10px", "30px", "10px"],
+      backgroundColor: ["#ef4444", "#dc2626", "#ef4444"],
+      transition: enableVisualizations
+        ? { duration: 0.1 }
+        : {
+            duration: 0.5,
+            repeat: Infinity,
+            delay: i * 0.1,
+            ease: "easeInOut",
+          },
+    }),
+    speaking: (i: number) => ({
+      height: enableVisualizations
+        ? `${visualizerData[i % visualizerData.length]}px`
+        : ["15px", "25px", "15px"],
+      backgroundColor: ["#3b82f6", "#2563eb", "#3b82f6"],
+      transition: enableVisualizations
+        ? { duration: 0.1 }
+        : {
+            duration: 0.7,
+            repeat: Infinity,
+            delay: i * 0.15,
+            ease: "easeInOut",
+          },
     }),
     processing: (i: number) => ({
       height: "20px",
@@ -183,24 +379,35 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         const voices = window.speechSynthesis.getVoices();
         setAvailableVoices(voices);
 
-        // Find Indian female voice
+        // Match voice preference with available voices
         let voice = null;
 
-        // First try: Look for Hindi voices
-        voice = voices.find(
-          (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
-        );
-
-        // Second try: Look for Indian English voices
-        if (!voice) {
+        if (voicePreference === "indian-female") {
+          // First try: Look for Hindi voices
           voice = voices.find(
-            (v) =>
-              (v.lang === "en-IN" || v.name.toLowerCase().includes("indian")) &&
-              v.name.toLowerCase().includes("female")
+            (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
+          );
+
+          // Second try: Look for Indian English voices
+          if (!voice) {
+            voice = voices.find(
+              (v) =>
+                (v.lang === "en-IN" ||
+                  v.name.toLowerCase().includes("indian")) &&
+                v.name.toLowerCase().includes("female")
+            );
+          }
+        } else if (voicePreference === "british-male") {
+          voice = voices.find(
+            (v) => v.lang === "en-GB" && v.name.toLowerCase().includes("male")
+          );
+        } else if (voicePreference === "american-female") {
+          voice = voices.find(
+            (v) => v.lang === "en-US" && v.name.toLowerCase().includes("female")
           );
         }
 
-        // Third try: Any female voice
+        // Fallback to any female voice
         if (!voice) {
           voice = voices.find((v) => v.name.toLowerCase().includes("female"));
         }
@@ -223,19 +430,81 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         window.speechSynthesis.onvoiceschanged = loadVoices;
       }
     }
-  }, []);
+  }, [voicePreference]);
 
   // Export the selected voice for use in the parent component
   useEffect(() => {
     if (selectedVoiceRef.current && window.speechSynthesis) {
       // Use a type-safe approach to store the selected voice
       (window as any).selectedVoice = selectedVoiceRef.current;
+
+      // Also store speech rate and volume settings
+      (window as any).speechSettings = {
+        voice: selectedVoiceRef.current,
+        rate: speechRate,
+        volume: volume,
+      };
     }
-  }, [availableVoices]);
+  }, [availableVoices, speechRate, volume]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Space bar to toggle recording while holding ctrl
+      if (e.code === "Space" && e.ctrlKey) {
+        e.preventDefault();
+        onRecordToggle();
+      }
+
+      // Escape to cancel recording
+      if (e.code === "Escape" && isListening) {
+        e.preventDefault();
+        onRecordToggle();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isListening, onRecordToggle]);
+
+  // Toggle advanced controls
+  const toggleControls = () => {
+    setShowControls(!showControls);
+  };
+
+  // Handle speech rate change
+  const handleSpeechRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newRate = parseFloat(e.target.value);
+    if (onSpeechRateChange) {
+      onSpeechRateChange(newRate);
+    }
+
+    // Update global settings
+    if (window && (window as any).speechSettings) {
+      (window as any).speechSettings.rate = newRate;
+    }
+  };
+
+  // Handle volume change
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    if (onVolumeChange) {
+      onVolumeChange(newVolume);
+    }
+
+    // Update global settings
+    if (window && (window as any).speechSettings) {
+      (window as any).speechSettings.volume = newVolume;
+    }
+  };
 
   return (
     <motion.div
-      className="flex-1 flex flex-col items-center justify-center p-6"
+      className={`flex-1 flex flex-col items-center justify-center p-6 ${
+        theme === "light"
+          ? "bg-gray-100 text-gray-800"
+          : "bg-gray-900 text-white"
+      }`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -245,6 +514,31 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
       >
+        {/* Status Indicator */}
+        {isWakeWordMode && (
+          <motion.div
+            className="absolute -top-8 left-0 right-0 text-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <span
+              className={`inline-block px-3 py-1 rounded-full text-xs ${
+                wakeWordStatus === "detected"
+                  ? "bg-green-500 text-white"
+                  : wakeWordStatus === "listening"
+                  ? "bg-purple-500 text-white"
+                  : "bg-gray-500 text-white"
+              }`}
+            >
+              {wakeWordStatus === "detected"
+                ? "Wake Word Detected"
+                : wakeWordStatus === "listening"
+                ? "Listening for Wake Word"
+                : "Wake Mode Active"}
+            </span>
+          </motion.div>
+        )}
+
         {/* Main Circle */}
         <motion.div
           className="absolute inset-0 rounded-full border-4"
@@ -288,9 +582,9 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           </div>
         </motion.div>
 
-        {/* Waveform Visualization */}
+        {/* Enhanced Waveform Visualization */}
         <div className="absolute inset-x-0 bottom-0 flex justify-center space-x-1 pb-4">
-          {[...Array(7)].map((_, i) => (
+          {[...Array(9)].map((_, i) => (
             <motion.div
               key={i}
               className="w-1.5 rounded-full"
@@ -319,14 +613,20 @@ export const VoiceUI: FC<VoiceUIProps> = ({
                 className={`${
                   speakerType === "assistant"
                     ? "text-blue-400"
-                    : "text-green-400"
+                    : speakerType === "user"
+                    ? "text-green-400"
+                    : "text-purple-400"
                 }`}
               >
                 {subtitle}
               </span>
             </motion.div>
           )}
-          <motion.div className="text-white text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4">
+          <motion.div
+            className={`${
+              theme === "light" ? "text-gray-800" : "text-white"
+            } text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4`}
+          >
             {message.split(" ").map((word, index, array) => {
               const currentWordIndex =
                 Math.floor((Date.now() - speechStartTime) / 200) % array.length;
@@ -361,7 +661,11 @@ export const VoiceUI: FC<VoiceUIProps> = ({
                     }
                   }}
                   animate={{
-                    color: isCurrentWord ? "#3b82f6" : "#ffffff",
+                    color: isCurrentWord
+                      ? "#3b82f6"
+                      : theme === "light"
+                      ? "#111827"
+                      : "#ffffff",
                     scale: isCurrentWord ? 1.1 : 1,
                     backgroundColor: isCurrentWord
                       ? "rgba(59, 130, 246, 0.2)"
@@ -381,41 +685,271 @@ export const VoiceUI: FC<VoiceUIProps> = ({
             })}
           </motion.div>
         </motion.div>
-        <p className="text-gray-300 text-sm">{instruction}</p>
+        <p
+          className={`${
+            theme === "light" ? "text-gray-600" : "text-gray-300"
+          } text-sm`}
+        >
+          {instruction}
+        </p>
       </motion.div>
 
-      <motion.button
-        onClick={onRecordToggle}
-        className="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg
-          flex items-center justify-center hover:scale-110 transition-transform duration-300"
-        whileTap={{ scale: 0.9 }}
-      >
-        {isListening ? (
-          // Stop icon when listening
+      {/* Controls and Buttons Row */}
+      <div className="flex items-center justify-center space-x-4">
+        {/* Settings button */}
+        <motion.button
+          onClick={toggleControls}
+          className={`w-10 h-10 rounded-full ${
+            theme === "light"
+              ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              : "bg-gray-700 text-gray-200 hover:bg-gray-600"
+          } flex items-center justify-center`}
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.95 }}
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className="h-8 w-8"
-            viewBox="0 0 20 20"
-            fill="currentColor"
-          >
-            <rect x="5" y="5" width="10" height="10" rx="2" />
-          </svg>
-        ) : (
-          // Mic icon when not listening
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-8 w-8"
+            className="h-5 w-5"
             viewBox="0 0 20 20"
             fill="currentColor"
           >
             <path
               fillRule="evenodd"
-              d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
+              d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z"
               clipRule="evenodd"
             />
           </svg>
+        </motion.button>
+
+        {/* Main Record/Stop Button */}
+        <motion.button
+          onClick={onRecordToggle}
+          className="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg
+            flex items-center justify-center hover:scale-110 transition-transform duration-300"
+          whileTap={{ scale: 0.9 }}
+        >
+          {isListening ? (
+            // Stop icon when listening
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-8 w-8"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <rect x="5" y="5" width="10" height="10" rx="2" />
+            </svg>
+          ) : (
+            // Mic icon when not listening
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-8 w-8"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z"
+                clipRule="evenodd"
+              />
+            </svg>
+          )}
+        </motion.button>
+
+        {/* Wake Word Toggle Button */}
+        {isWakeWordMode !== undefined && onWakeWordDetected && (
+          <motion.button
+            onClick={() => {
+              if (isWakeWordListening) {
+                handleWakeWordDetection();
+              }
+            }}
+            className={`w-10 h-10 rounded-full ${
+              isWakeWordListening
+                ? "bg-purple-600 text-white hover:bg-purple-700"
+                : theme === "light"
+                ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                : "bg-gray-700 text-gray-200 hover:bg-gray-600"
+            } flex items-center justify-center`}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.616 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L10 6.477V16h2a1 1 0 110 2H8a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.233-.616a1 1 0 01.894-1.79l1.599.8L9 4.323V3a1 1 0 011-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </motion.button>
         )}
-      </motion.button>
+      </div>
+
+      {/* Advanced Controls Panel */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            className={`mt-6 p-4 rounded-lg ${
+              theme === "light" ? "bg-gray-200" : "bg-gray-800"
+            } w-full max-w-sm`}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+          >
+            <h3
+              className={`text-sm font-semibold mb-3 ${
+                theme === "light" ? "text-gray-700" : "text-gray-200"
+              }`}
+            >
+              Voice Settings
+            </h3>
+
+            {/* Voice selection */}
+            <div className="mb-4">
+              <label
+                className={`block text-xs mb-1 ${
+                  theme === "light" ? "text-gray-600" : "text-gray-300"
+                }`}
+              >
+                Voice Type
+              </label>
+              <select
+                className={`w-full p-2 rounded text-sm ${
+                  theme === "light"
+                    ? "bg-white border border-gray-300 text-gray-700"
+                    : "bg-gray-700 border border-gray-600 text-gray-200"
+                }`}
+                value={voicePreference}
+                onChange={(e) => {
+                  // This would be handled by the parent component
+                  console.log("Voice preference changed:", e.target.value);
+                }}
+              >
+                <option value="indian-female">Indian Female</option>
+                <option value="british-male">British Male</option>
+                <option value="american-female">American Female</option>
+              </select>
+            </div>
+
+            {/* Speech Rate Control */}
+            <div className="mb-4">
+              <label
+                className={`block text-xs mb-1 ${
+                  theme === "light" ? "text-gray-600" : "text-gray-300"
+                }`}
+              >
+                Speech Rate: {speechRate}x
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.1"
+                value={speechRate}
+                onChange={handleSpeechRateChange}
+                className="w-full"
+              />
+            </div>
+
+            {/* Volume Control */}
+            <div className="mb-4">
+              <label
+                className={`block text-xs mb-1 ${
+                  theme === "light" ? "text-gray-600" : "text-gray-300"
+                }`}
+              >
+                Volume: {Math.round(volume * 100)}%
+              </label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={volume}
+                onChange={handleVolumeChange}
+                className="w-full"
+              />
+            </div>
+
+            {/* Visualization Toggle */}
+            <div className="mb-4 flex items-center justify-between">
+              <label
+                className={`block text-xs ${
+                  theme === "light" ? "text-gray-600" : "text-gray-300"
+                }`}
+              >
+                Audio Visualizations
+              </label>
+              <button
+                onClick={() => {
+                  // This would be handled by the parent component
+                  console.log("Toggle visualizations");
+                }}
+                className={`w-12 h-6 rounded-full relative ${
+                  enableVisualizations
+                    ? "bg-indigo-500"
+                    : theme === "light"
+                    ? "bg-gray-300"
+                    : "bg-gray-600"
+                }`}
+              >
+                <div
+                  className={`absolute w-5 h-5 rounded-full top-0.5 transform transition-transform ${
+                    enableVisualizations
+                      ? "translate-x-6 bg-white"
+                      : "translate-x-0.5 bg-gray-100"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Keyboard Shortcuts Info */}
+            <div
+              className={`text-xs ${
+                theme === "light" ? "text-gray-500" : "text-gray-400"
+              }`}
+            >
+              <p>Keyboard shortcuts:</p>
+              <p>• Ctrl+Space: Toggle microphone</p>
+              <p>• Esc: Cancel recording</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Visual Feedback for Recording Duration */}
+      {isListening && (
+        <motion.div
+          className="mt-4 flex items-center space-x-2"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            className="w-3 h-3 rounded-full bg-red-500"
+            animate={{
+              opacity: [0.5, 1],
+              scale: [0.8, 1.2, 0.8],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+          />
+          <span
+            className={`text-xs font-medium ${
+              theme === "light" ? "text-gray-600" : "text-gray-300"
+            }`}
+          >
+            Recording... {Math.floor((Date.now() - lastSpeechTime) / 1000)}s
+          </span>
+        </motion.div>
+      )}
     </motion.div>
   );
 };
