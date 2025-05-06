@@ -2,9 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { TextToSpeech } from "@capacitor-community/text-to-speech";
 
-interface Voice {
-  name: string;
-  lang: string;
+// Use the global SpeechSynthesisVoice type if available, otherwise define a basic one
+type Voice = SpeechSynthesisVoice | { name: string; lang: string };
+
+interface SpeechOptions {
+  voice?: SpeechSynthesisVoice | null;
+  rate?: number;
+  volume?: number;
+  lang?: string; // Added lang for mobile
 }
 
 const useSpeechSynthesis = () => {
@@ -42,50 +47,51 @@ const useSpeechSynthesis = () => {
   }, []);
 
   const speak = useCallback(
-    async (text: string, speaker: string) => {
+    async (text: string, options: SpeechOptions = {}) => {
       // Added speaker parameter
       if (!text?.trim()) return;
 
       try {
         setSpeaking(true);
+        const { voice = null, rate = 1, volume = 1, lang = "en-US" } = options;
 
         if (Capacitor.isNativePlatform()) {
+          // Mobile TTS
           await TextToSpeech.speak({
             text,
-            lang: "en-US",
-            rate: 1.0,
-            pitch: 1.0,
-            volume: 1.0,
+            lang: voice?.lang || lang, // Use voice lang if available, else default
+            rate: rate,
+            pitch: 1.0, // Pitch adjustment might not be universally supported
+            volume: volume,
+            // category: 'ambient', // Optional: Adjust audio category if needed
           });
+          // Mobile TTS might not have a reliable end event, set speaking false immediately
+          // Or use a timer if duration estimation is possible
           setSpeaking(false);
         } else if (supported && window.speechSynthesis) {
-          window.speechSynthesis.cancel();
+          // Web Speech API
+          window.speechSynthesis.cancel(); // Cancel any ongoing speech
 
           const utterance = new SpeechSynthesisUtterance(text);
-          utterance.rate = 1.0;
-          utterance.pitch = 1.0;
-          utterance.volume = 1.0;
-          utterance.lang = "en-US";
+          utterance.voice = voice;
+          utterance.lang = voice?.lang || lang; // Ensure lang is set
+          utterance.rate = rate;
+          utterance.volume = volume;
+          utterance.pitch = 1.0; // Default pitch
 
-          const availableVoices = window.speechSynthesis.getVoices();
-          const preferredVoice = availableVoices.find(
-            (voice) =>
-              voice.name.includes("Google") ||
-              voice.name.includes("English") ||
-              voice.lang.startsWith("en-")
-          );
-
-          if (preferredVoice) {
-            utterance.voice = preferredVoice;
-          }
-
-          utterance.onend = () => setSpeaking(false);
+          utterance.onend = () => {
+            console.log("Speech synthesis finished.");
+            setSpeaking(false);
+          };
           utterance.onerror = (event) => {
             console.error("Speech synthesis error:", event);
             setSpeaking(false);
           };
 
           window.speechSynthesis.speak(utterance);
+        } else {
+          console.warn("Speech synthesis not supported or not initialized.");
+          setSpeaking(false); // Ensure state is reset if not supported
         }
       } catch (error) {
         console.error("TTS error:", error);

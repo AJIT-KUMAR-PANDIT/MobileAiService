@@ -1,5 +1,4 @@
 import { Capacitor } from "@capacitor/core";
-import { Camera } from "@capacitor/camera";
 import { Filesystem } from "@capacitor/filesystem";
 import { Toast } from "@capacitor/toast";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
@@ -19,9 +18,6 @@ export class PermissionsManager {
 
       // Request storage permission (for model storage)
       await this.requestStoragePermission();
-
-      // Request camera permission (optional, for image input)
-      await this.requestCameraPermission();
     } catch (error) {
       console.error("Error requesting permissions:", error);
       await Toast.show({
@@ -86,32 +82,6 @@ export class PermissionsManager {
       return true;
     } catch (error) {
       console.error("Error requesting storage permission:", error);
-      return false;
-    }
-  }
-
-  /**
-   * Request camera permission
-   */
-  public static async requestCameraPermission(): Promise<boolean> {
-    if (!Capacitor.isNativePlatform()) {
-      return true;
-    }
-
-    try {
-      // Use Camera plugin to request permissions
-      const permissionStatus = await Camera.checkPermissions();
-      if (permissionStatus.camera !== "granted") {
-        const requestResult = await Camera.requestPermissions();
-        if (requestResult.camera !== "granted") {
-          // Camera is optional, so just log this
-          console.log("Camera permission not granted");
-          return false;
-        }
-      }
-      return true;
-    } catch (error) {
-      console.error("Error requesting camera permission:", error);
       return false;
     }
   }

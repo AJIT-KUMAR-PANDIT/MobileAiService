@@ -1,6 +1,6 @@
 import { FC, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useIndianVoice } from "../hooks/useIndianVoice";
+import { Capacitor } from "@capacitor/core";
 
 interface VoiceUIProps {
   isActive: boolean;
@@ -15,7 +15,6 @@ interface VoiceUIProps {
   isWakeWordListening?: boolean;
   onWakeWordDetected?: () => void;
   onProcessVoiceInput: (text: string) => Promise<void>;
-  // New props
   speechRate?: number;
   volume?: number;
   onVolumeChange?: (volume: number) => void;
@@ -37,7 +36,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   isWakeWordListening = false,
   onWakeWordDetected,
   onProcessVoiceInput,
-  // New props with defaults
   speechRate = 1,
   volume = 1,
   onVolumeChange,
@@ -50,7 +48,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
   const [speakerType, setSpeakerType] = useState<"assistant" | "user" | null>(
     null
   );
-  const [silenceTimer, setSilenceTimer] = useState<NodeJS.Timeout | null>(null);
   const [lastSpeechTime, setLastSpeechTime] = useState(Date.now());
   const [showControls, setShowControls] = useState(false);
   const [visualizerData, setVisualizerData] = useState<number[]>(
@@ -60,13 +57,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     "idle" | "detected" | "listening"
   >("idle");
 
-  // Add voice selection logic
-  const [availableVoices, setAvailableVoices] = useState<
-    SpeechSynthesisVoice[]
-  >([]);
-  const selectedVoiceRef = useRef<SpeechSynthesisVoice | null>(null);
-
-  // Refs for audio analysis
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -75,24 +65,27 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     if (isWakeWordMode && isWakeWordListening) {
       setWakeWordStatus("listening");
       setSubtitle("Listening for wake word...");
-    } else if (isWakeWordMode && onWakeWordDetected) {
-      if (wakeWordStatus === "detected") {
-        const timer = setTimeout(() => {
-          setWakeWordStatus("idle");
-        }, 2000);
-        return () => clearTimeout(timer);
-      }
+    } else if (isWakeWordMode && wakeWordStatus === "detected") {
+      // Keep detected status until explicitly changed
+    } else if (!isWakeWordMode && !isListening && !isSpeaking && !isInferring) {
+      setWakeWordStatus("idle");
+      setSubtitle("");
     }
-  }, [isWakeWordMode, isWakeWordListening, onWakeWordDetected, wakeWordStatus]);
+  }, [
+    isWakeWordMode,
+    isWakeWordListening,
+    wakeWordStatus,
+    isListening,
+    isSpeaking,
+    isInferring,
+  ]);
 
-  // Handle wake word detection
   const handleWakeWordDetection = () => {
     if (onWakeWordDetected) {
       setWakeWordStatus("detected");
       setSubtitle("Wake word detected!");
       onWakeWordDetected();
 
-      // Reset after animation
       setTimeout(() => {
         setWakeWordStatus("listening");
         setSubtitle("Listening for command...");
@@ -107,7 +100,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       setSubtitle("Luna is speaking...");
       setLastSpeechTime(Date.now());
 
-      // Create dynamic visualizer data for speaking
       if (enableVisualizations) {
         const interval = setInterval(() => {
           setVisualizerData(
@@ -118,76 +110,66 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         }, 100);
         return () => clearInterval(interval);
       }
-
-      // Reset silence timer when assistant stops speaking
-      if (silenceTimer) {
-        clearTimeout(silenceTimer);
-      }
     } else if (isListening) {
       setSpeakerType("user");
       setSubtitle("Listening to you...");
       setLastSpeechTime(Date.now());
 
-      // Setup audio analysis for microphone input if enabled
       if (enableVisualizations && !analyserRef.current) {
         setupAudioAnalysis();
       }
-
-      // Start silence timer when user starts speaking
-      if (silenceTimer) {
-        clearTimeout(silenceTimer);
-      }
-      const timer = setTimeout(() => {
-        if (isListening) {
-          onRecordToggle(); // Stop listening after 3 seconds of silence
-        }
-      }, 3000);
-      setSilenceTimer(timer);
     } else if (!isSpeaking && !isListening) {
-      // Clean up audio analysis
       if (analyserRef.current) {
         cleanupAudioAnalysis();
       }
 
-      // Only wait 15 seconds after assistant response
       if (speakerType === "assistant") {
         const timer = setTimeout(() => {
-          setSubtitle("Waiting for your response...");
-          setSpeakerType(null);
-          onRecordToggle(); // Start listening after 15 seconds
-        }, 15000);
+          if (isActive && !isListening && !isSpeaking) {
+            onRecordToggle();
+          }
+        }, 150);
         return () => clearTimeout(timer);
       } else {
         setSpeakerType(null);
         setSubtitle("");
       }
     }
-
-    return () => {
-      if (silenceTimer) {
-        clearTimeout(silenceTimer);
-      }
-    };
   }, [
     isSpeaking,
     isListening,
     onRecordToggle,
     speakerType,
+    isActive,
     enableVisualizations,
   ]);
 
-  // Setup audio analysis for visualizations
   const setupAudioAnalysis = async () => {
+    if (Capacitor.isNativePlatform()) {
+      setVisualizerData(Array(20).fill(10));
+      return;
+    }
+
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext ||
           (window as any).webkitAudioContext)();
       }
 
+      if (!audioContextRef.current) {
+        console.error("AudioContext could not be initialized.");
+        return;
+      }
+
       if (!micStreamRef.current) {
         micStreamRef.current = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
+      }
+
+      if (!micStreamRef.current) {
+        console.error("Microphone stream could not be obtained.");
+        return;
       }
 
       const analyser = audioContextRef.current.createAnalyser();
@@ -218,10 +200,10 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       updateVisualizer();
     } catch (err) {
       console.error("Error setting up audio analysis:", err);
+      cleanupAudioAnalysis();
     }
   };
 
-  // Cleanup audio analysis
   const cleanupAudioAnalysis = () => {
     if (micStreamRef.current) {
       micStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -251,7 +233,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     wakeword: {
       scale: [1, 1.1, 1],
       opacity: [0.6, 0.9, 0.6],
-      borderColor: ["#9333ea", "#7e22ce", "#9333ea"],
+      borderColor: ["#a855f7", "#9333ea", "#a855f7"],
       transition: {
         duration: 2,
         repeat: Infinity,
@@ -261,7 +243,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     detected: {
       scale: [1, 1.3, 1],
       opacity: [0.7, 1, 0.7],
-      borderColor: ["#16a34a", "#15803d", "#16a34a"],
+      borderColor: ["#22c55e", "#16a34a", "#22c55e"],
       transition: {
         duration: 0.5,
         repeat: 3,
@@ -271,7 +253,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     listening: {
       scale: [1, 1.2, 1],
       opacity: [0.7, 1, 0.7],
-      borderColor: ["#ef4444", "#dc2626", "#ef4444"],
+      borderColor: ["#f87171", "#ef4444", "#f87171"],
       transition: {
         duration: 1.5,
         repeat: Infinity,
@@ -281,7 +263,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     speaking: {
       scale: [1, 1.1, 1],
       opacity: [0.8, 1, 0.8],
-      borderColor: ["#3b82f6", "#2563eb", "#3b82f6"],
+      borderColor: ["#60a5fa", "#3b82f6", "#60a5fa"],
       transition: {
         duration: 1,
         repeat: Infinity,
@@ -291,6 +273,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     processing: {
       rotate: [0, 360],
       borderColor: ["#8b5cf6", "#6366f1", "#8b5cf6"],
+      borderWidth: ["4px", "6px", "4px"],
       transition: {
         duration: 2,
         repeat: Infinity,
@@ -300,7 +283,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     idle: {
       scale: 1,
       opacity: 0.7,
-      borderColor: "#6366f1",
+      borderColor: "#818cf8",
     },
   };
 
@@ -308,6 +291,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     wakeword: (i: number) => ({
       height: ["8px", "18px", "8px"],
       backgroundColor: ["#9333ea", "#7e22ce", "#9333ea"],
+      opacity: [0.5, 0.9, 0.5],
       transition: {
         duration: 0.8,
         repeat: Infinity,
@@ -318,6 +302,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     detected: (i: number) => ({
       height: ["20px", "40px", "20px"],
       backgroundColor: ["#16a34a", "#15803d", "#16a34a"],
+      opacity: [0.6, 1, 0.6],
       transition: {
         duration: 0.3,
         repeat: 3,
@@ -326,37 +311,53 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       },
     }),
     listening: (i: number) => ({
-      height: enableVisualizations
-        ? `${visualizerData[i % visualizerData.length]}px`
-        : ["10px", "30px", "10px"],
+      height:
+        enableVisualizations &&
+        !Capacitor.isNativePlatform() &&
+        visualizerData.length > 0
+          ? `${Math.max(5, visualizerData[i % visualizerData.length] ?? 5)}px` // Ensure minimum height and handle potential undefined
+          : "15px", // Default height when visualization is off or data unavailable
       backgroundColor: ["#ef4444", "#dc2626", "#ef4444"],
-      transition: enableVisualizations
-        ? { duration: 0.1 }
-        : {
-            duration: 0.5,
-            repeat: Infinity,
-            delay: i * 0.1,
-            ease: "easeInOut",
-          },
+      opacity:
+        enableVisualizations &&
+        !Capacitor.isNativePlatform() &&
+        visualizerData.length > 0
+          ? 1
+          : [0.6, 1, 0.6],
+      transition:
+        enableVisualizations &&
+        !Capacitor.isNativePlatform() &&
+        visualizerData.length > 0
+          ? { duration: 0.1 }
+          : {
+              duration: 0.5,
+              repeat: Infinity,
+              delay: i * 0.1,
+              ease: "easeInOut",
+            },
     }),
     speaking: (i: number) => ({
-      height: enableVisualizations
-        ? `${visualizerData[i % visualizerData.length]}px`
-        : ["15px", "25px", "15px"],
+      height:
+        enableVisualizations && visualizerData.length > 0
+          ? `${Math.max(5, visualizerData[i % visualizerData.length] ?? 5)}px` // Ensure minimum height and handle potential undefined
+          : "20px", // Default height when visualization is off or data unavailable
       backgroundColor: ["#3b82f6", "#2563eb", "#3b82f6"],
-      transition: enableVisualizations
-        ? { duration: 0.1 }
-        : {
-            duration: 0.7,
-            repeat: Infinity,
-            delay: i * 0.15,
-            ease: "easeInOut",
-          },
+      opacity:
+        enableVisualizations && visualizerData.length > 0 ? 1 : [0.7, 1, 0.7],
+      transition:
+        enableVisualizations && visualizerData.length > 0
+          ? { duration: 0.1 }
+          : {
+              duration: 0.7,
+              repeat: Infinity,
+              delay: i * 0.15,
+              ease: "easeInOut",
+            },
     }),
     processing: (i: number) => ({
       height: "20px",
       backgroundColor: "#8b5cf6",
-      opacity: [0.3, 1, 0.3],
+      opacity: [0.4, 1, 0.4],
       transition: {
         duration: 1,
         repeat: Infinity,
@@ -367,96 +368,19 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     idle: {
       height: "10px",
       backgroundColor: "#6366f1",
-      opacity: 0.5,
+      opacity: 0.6,
     },
   };
 
   const currentState = getAnimationState();
 
-  // Load available voices
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        setAvailableVoices(voices);
-
-        // Match voice preference with available voices
-        let voice = null;
-
-        if (voicePreference === "indian-female") {
-          // First try: Look for Hindi voices
-          voice = voices.find(
-            (v) => v.lang === "hi-IN" && v.name.toLowerCase().includes("female")
-          );
-
-          // Second try: Look for Indian English voices
-          if (!voice) {
-            voice = voices.find(
-              (v) =>
-                (v.lang === "en-IN" ||
-                  v.name.toLowerCase().includes("indian")) &&
-                v.name.toLowerCase().includes("female")
-            );
-          }
-        } else if (voicePreference === "british-male") {
-          voice = voices.find(
-            (v) => v.lang === "en-GB" && v.name.toLowerCase().includes("male")
-          );
-        } else if (voicePreference === "american-female") {
-          voice = voices.find(
-            (v) => v.lang === "en-US" && v.name.toLowerCase().includes("female")
-          );
-        }
-
-        // Fallback to any female voice
-        if (!voice) {
-          voice = voices.find((v) => v.name.toLowerCase().includes("female"));
-        }
-
-        // Fallback to any voice
-        if (!voice && voices.length > 0) {
-          voice = voices[0];
-        }
-
-        if (voice) {
-          selectedVoiceRef.current = voice;
-        }
-      };
-
-      loadVoices();
-
-      // Chrome loads voices asynchronously
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = loadVoices;
-      }
-    }
-  }, [voicePreference]);
-
-  // Export the selected voice for use in the parent component
-  useEffect(() => {
-    if (selectedVoiceRef.current && window.speechSynthesis) {
-      // Use a type-safe approach to store the selected voice
-      (window as any).selectedVoice = selectedVoiceRef.current;
-
-      // Also store speech rate and volume settings
-      (window as any).speechSettings = {
-        voice: selectedVoiceRef.current,
-        rate: speechRate,
-        volume: volume,
-      };
-    }
-  }, [availableVoices, speechRate, volume]);
-
-  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Space bar to toggle recording while holding ctrl
       if (e.code === "Space" && e.ctrlKey) {
         e.preventDefault();
         onRecordToggle();
       }
 
-      // Escape to cancel recording
       if (e.code === "Escape" && isListening) {
         e.preventDefault();
         onRecordToggle();
@@ -464,37 +388,27 @@ export const VoiceUI: FC<VoiceUIProps> = ({
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      cleanupAudioAnalysis();
+    };
   }, [isListening, onRecordToggle]);
 
-  // Toggle advanced controls
   const toggleControls = () => {
     setShowControls(!showControls);
   };
 
-  // Handle speech rate change
   const handleSpeechRateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newRate = parseFloat(e.target.value);
     if (onSpeechRateChange) {
       onSpeechRateChange(newRate);
     }
-
-    // Update global settings
-    if (window && (window as any).speechSettings) {
-      (window as any).speechSettings.rate = newRate;
-    }
   };
 
-  // Handle volume change
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVolume = parseFloat(e.target.value);
     if (onVolumeChange) {
       onVolumeChange(newVolume);
-    }
-
-    // Update global settings
-    if (window && (window as any).speechSettings) {
-      (window as any).speechSettings.volume = newVolume;
     }
   };
 
@@ -514,7 +428,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         initial={{ scale: 0.8 }}
         animate={{ scale: 1 }}
       >
-        {/* Status Indicator */}
         {isWakeWordMode && (
           <motion.div
             className="absolute -top-8 left-0 right-0 text-center"
@@ -539,21 +452,36 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           </motion.div>
         )}
 
-        {/* Main Circle */}
         <motion.div
           className="absolute inset-0 rounded-full border-4"
           animate={currentState}
           variants={circleVariants}
         >
           <div className="absolute inset-0 flex items-center justify-center">
-            {/* Luna Logo */}
             <motion.div
               className="w-24 h-24"
               animate={{
+                scale:
+                  currentState === "idle" || currentState === "wakeword"
+                    ? [1, 1.03, 1]
+                    : 1,
                 opacity: isInferring ? [0.5, 1] : 1,
-                scale: isInferring ? [0.95, 1.05] : 1,
               }}
-              transition={{ duration: 1, repeat: isInferring ? Infinity : 0 }}
+              transition={{
+                duration:
+                  currentState === "idle" || currentState === "wakeword"
+                    ? 2.5
+                    : isInferring
+                    ? 1
+                    : 0.2,
+                repeat:
+                  currentState === "idle" ||
+                  currentState === "wakeword" ||
+                  isInferring
+                    ? Infinity
+                    : 0,
+                ease: "easeInOut",
+              }}
             >
               <svg viewBox="0 0 100 100" className="w-full h-full text-white">
                 <circle
@@ -582,9 +510,8 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           </div>
         </motion.div>
 
-        {/* Enhanced Waveform Visualization */}
         <div className="absolute inset-x-0 bottom-0 flex justify-center space-x-1 pb-4">
-          {[...Array(9)].map((_, i) => (
+          {[...Array(15)].map((_, i) => (
             <motion.div
               key={i}
               className="w-1.5 rounded-full"
@@ -606,7 +533,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
             <motion.div
               className="absolute -top-6 left-0 right-0 text-sm font-medium"
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              animate={{ opacity: subtitle ? 1 : 0 }}
               exit={{ opacity: 0 }}
             >
               <span
@@ -628,8 +555,12 @@ export const VoiceUI: FC<VoiceUIProps> = ({
             } text-2xl font-bold mb-2 font-tech h-[111px] overflow-y-auto scrollbar-thin scrollbar-thumb-blue-500 scrollbar-track-transparent px-4`}
           >
             {message.split(" ").map((word, index, array) => {
+              // Avoid division by zero if array is empty
               const currentWordIndex =
-                Math.floor((Date.now() - speechStartTime) / 200) % array.length;
+                array.length > 0
+                  ? Math.floor((Date.now() - speechStartTime) / 200) %
+                    array.length
+                  : -1;
               const isCurrentWord = isSpeaking && index === currentWordIndex;
               const isPrevWord =
                 index >= currentWordIndex - 2 && index < currentWordIndex;
@@ -694,9 +625,7 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         </p>
       </motion.div>
 
-      {/* Controls and Buttons Row */}
       <div className="flex items-center justify-center space-x-4">
-        {/* Settings button */}
         <motion.button
           onClick={toggleControls}
           className={`w-10 h-10 rounded-full ${
@@ -721,7 +650,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           </svg>
         </motion.button>
 
-        {/* Main Record/Stop Button */}
         <motion.button
           onClick={onRecordToggle}
           className="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg
@@ -729,7 +657,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           whileTap={{ scale: 0.9 }}
         >
           {isListening ? (
-            // Stop icon when listening
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-8 w-8"
@@ -739,7 +666,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               <rect x="5" y="5" width="10" height="10" rx="2" />
             </svg>
           ) : (
-            // Mic icon when not listening
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-8 w-8"
@@ -755,7 +681,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
           )}
         </motion.button>
 
-        {/* Wake Word Toggle Button */}
         {isWakeWordMode !== undefined && onWakeWordDetected && (
           <motion.button
             onClick={() => {
@@ -789,7 +714,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         )}
       </div>
 
-      {/* Advanced Controls Panel */}
       <AnimatePresence>
         {showControls && (
           <motion.div
@@ -808,7 +732,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               Voice Settings
             </h3>
 
-            {/* Voice selection */}
             <div className="mb-4">
               <label
                 className={`block text-xs mb-1 ${
@@ -824,7 +747,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
                     : "bg-gray-700 border border-gray-600 text-gray-200"
                 }`}
                 value={voicePreference}
-                onChange={handleVoicePreferenceChange}
               >
                 <option value="indian-female">Indian Female</option>
                 <option value="british-male">British Male</option>
@@ -832,7 +754,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               </select>
             </div>
 
-            {/* Speech Rate Control */}
             <div className="mb-4">
               <label
                 className={`block text-xs mb-1 ${
@@ -852,7 +773,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               />
             </div>
 
-            {/* Volume Control */}
             <div className="mb-4">
               <label
                 className={`block text-xs mb-1 ${
@@ -872,7 +792,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               />
             </div>
 
-            {/* Visualization Toggle */}
             <div className="mb-4 flex items-center justify-between">
               <label
                 className={`block text-xs ${
@@ -883,7 +802,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               </label>
               <button
                 onClick={() => {
-                  // This would be handled by the parent component
                   console.log("Toggle visualizations");
                 }}
                 className={`w-12 h-6 rounded-full relative ${
@@ -904,7 +822,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
               </button>
             </div>
 
-            {/* Keyboard Shortcuts Info */}
             <div
               className={`text-xs ${
                 theme === "light" ? "text-gray-500" : "text-gray-400"
@@ -918,7 +835,6 @@ export const VoiceUI: FC<VoiceUIProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Visual Feedback for Recording Duration */}
       {isListening && (
         <motion.div
           className="mt-4 flex items-center space-x-2"
@@ -949,14 +865,4 @@ export const VoiceUI: FC<VoiceUIProps> = ({
       )}
     </motion.div>
   );
-};
-
-// Add this function before your return statement
-const handleVoicePreferenceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  const newVoice = e.target.value;
-  // If you want to persist the selection
-  localStorage.setItem("voicePreference", newVoice);
-  // If you want to update the prop/state (if you have a setter)
-  // setVoicePreference(newVoice); // Uncomment if you have this state
-  // If you want to notify parent, call a prop function here if available
 };

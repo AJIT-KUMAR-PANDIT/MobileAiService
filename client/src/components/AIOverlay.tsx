@@ -19,7 +19,7 @@ import { Capacitor } from "@capacitor/core";
 import { SpeechRecognition } from "@capacitor-community/speech-recognition";
 import { Device } from "@capacitor/device";
 import { Filesystem, Directory } from "@capacitor/filesystem";
-import { Camera } from "@capacitor/camera";
+
 // Create a placeholder URL for the wakeup sound
 const DEFAULT_SOUND_URL =
   "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAA=";
@@ -250,7 +250,10 @@ export const AIOverlay: FC<AIOverlayProps> = ({ isVisible, onClose }) => {
       // Stop wake word detection temporarily
       stopWakeWordListening();
 
-      // Reset detection to prepare for next wake word
+      // Start listening for user command immediately
+      handleMicrophoneToggle();
+
+      // Reset detection state
       resetDetection();
 
       // Start listening for command after a short delay
